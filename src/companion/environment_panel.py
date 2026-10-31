@@ -36,18 +36,16 @@ class EnvironmentPanel(QWidget):
         self.timer=QTimer(self);self.timer.setInterval(2000);self.timer.timeout.connect(self._tick)
         if sys.platform!="win32":
             self.allow.setEnabled(False);self.label.setText("La observación de ventanas de esta versión requiere Windows.")
-    def _toggle(self,value):
+    def set_observation_enabled(self, value):
+        value = bool(value) and self.policy.state is State.ACTIVE and sys.platform == "win32"
+        self.allow.blockSignals(True);self.allow.setChecked(value);self.allow.blockSignals(False)
         if value:
-            if self.policy.state is not State.ACTIVE:return
-            answer=QMessageBox.question(self,"Autorizar contexto de ventanas",
-                "Puede leer títulos de documentos o aplicaciones que uses. Solo se mantienen en RAM y llegan al chat si activás compartir. ¿Autorizar?",
-                QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No,QMessageBox.StandardButton.No)
-            if answer!=QMessageBox.StandardButton.Yes:
-                self.allow.blockSignals(True);self.allow.setChecked(False);self.allow.blockSignals(False);return
             self.policy.grant("sensor.foreground");self.timer.start()
         else:
             self.timer.stop();self.policy.revoke("sensor.foreground")
             self.observed="";self.observed_at="";self.label.setText("Observaciones borradas.");self.changed.emit()
+    def _toggle(self,value):
+        self.set_observation_enabled(value)
     def _tick(self):
         if self.policy.state is not State.ACTIVE or not self.allow.isChecked():return
         try:

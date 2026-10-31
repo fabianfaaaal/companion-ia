@@ -35,3 +35,6 @@ Pruebas automáticas no equivalen a aceptación manual de sonido, micrófono o e
 Enter envía el mensaje; Shift+Enter inserta una nueva línea. El teclado numérico también permite enviar.
 El indicador Respuesta mide desde el envío hasta insertar la respuesta completa en el chat, incluyendo preparación y espera del modelo; no incluye voz. Cambia de ms a segundos, minutos u horas según duración. Cancelaciones y errores se muestran sin inventar una duración exitosa.
 El paquete interaction-preview contiene estos cambios y conserva el tools-preview anterior.
+
+## Actualización posterior
+El criterio de preferencias iniciales cambió el 2026-10-31: ver [voz preparada y valores iniciales](voice-ready-preview.md). Esa guía prevalece para voice-ready-preview.

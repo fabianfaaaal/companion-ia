@@ -10,30 +10,22 @@ import threading
 import time
 
 from PySide6.QtCore import QThread, QTimer, Signal
-from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QMessageBox, QPushButton, QWidget
+from PySide6.QtWidgets import QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 from companion.audio_io import AudioIO, AudioError
 from companion.policy import Denied, State
 
 
-def engine_root():
-    base = os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local/share")
-    return (Path(base) / "CompanionIA" / "voice-engine").resolve()
-
-
-def engine_ready(root):
-    return all(path.exists() for path in (
-        root / "venv/Scripts/python.exe" if os.name == "nt" else root / "venv/bin/python",
-        root / "speech_engine.py", root / "models/piper/es_AR-daniela-high.onnx",
-        root / "models/piper/es_AR-daniela-high.onnx.json", root / "models/whisper-base/model.bin"))
+from companion.voice_paths import engine_root, engine_ready, register_engine, qwen_root, qwen_ready
 
 
 class SpeechJob(QThread):
     result = Signal(int, object)
     failure = Signal(int, str)
 
-    def __init__(self, job, root, operation, value):
+    def __init__(self, job, root, operation, value, backend="piper"):
         super().__init__()
         self.job, self.root, self.operation, self.value = job, root, operation, value
+        self.backend = backend
         self._cancelled = threading.Event()
         self._lock = threading.Lock()
         self._process = None
@@ -57,16 +49,18 @@ class SpeechJob(QThread):
                 return None
             process = self._process
             if process is None:
-                python = self.root / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
+                runtime = qwen_root() if self.operation == "tts" and self.backend == "qwen" else self.root
+                worker_name = "qwen_voice_engine.py" if self.operation == "tts" and self.backend == "qwen" else "speech_engine.py"
+                python = runtime / ("venv/Scripts/python.exe" if os.name == "nt" else "venv/bin/python")
                 env = os.environ.copy()
                 env.update(HF_HUB_OFFLINE="1", HF_HUB_DISABLE_TELEMETRY="1",
                            DO_NOT_TRACK="1", PYTHONDONTWRITEBYTECODE="1")
                 if os.name == "nt":
                     windows = Path(os.environ.get("WINDIR", "C:/Windows"))
                     env["PATH"] = os.pathsep.join([str(python.parent), str(windows / "System32"), str(windows)])
-                process = subprocess.Popen([str(python), str(self.root / "speech_engine.py")],
+                process = subprocess.Popen([str(python), str(runtime / worker_name)],
                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                    cwd=self.root, env=env, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                    cwd=runtime, env=env, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                 self._process = process
         process.stdin.write((json.dumps(request) + "\n").encode("utf-8"))
         process.stdin.flush()
@@ -164,6 +158,7 @@ class VoicePanel(QWidget):
         self.audio = AudioIO(policy)
         self.root = engine_root()
         self.ready = engine_ready(self.root)
+        self.prefer_natural = True
         self._job = 0
         self._worker = None
         self._lease = None
@@ -171,8 +166,11 @@ class VoicePanel(QWidget):
         self._queue = []
         self._capturing = False
         self._capture_started = 0.0
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        self._tts_started = 0.0
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        layout = QHBoxLayout()
+        outer.addLayout(layout)
         self.read = QCheckBox("Leer respuestas")
         self.read.toggled.connect(self._toggle_voice)
         self.mic = QCheckBox("Habilitar micrófono")
@@ -185,14 +183,28 @@ class VoicePanel(QWidget):
         self.devices.currentIndexChanged.connect(self._device_changed)
         self.record = QPushButton("Dictar")
         self.record.clicked.connect(self.toggle_record)
+        self.review_button = QPushButton("Revisar voz")
+        self.review_button.clicked.connect(self.review_engine)
         self.stop_button = QPushButton("Detener audio")
         self.stop_button.clicked.connect(self.stop)
         self.state = QLabel("Voz local lista" if self.ready else "Motor de voz no preparado")
         self.state.setObjectName("muted")
-        self.state.setMaximumWidth(170)
+        self.state.setMinimumWidth(220)
+        self.state.setMaximumWidth(300)
         self.state.setWordWrap(True)
-        for widget in (self.read, self.mic, self.devices, self.record, self.stop_button, self.state):
+        for widget in (self.read, self.mic, self.devices, self.record, self.stop_button):
             layout.addWidget(widget)
+        settings = QHBoxLayout()
+        self.quality = QComboBox()
+        self.quality.addItems(["Natural · Qwen experimental", "Ligera · Piper"])
+        self.quality.setToolTip("Qwen usa GPU y tiene una carga lenta; no es voz en tiempo real en este preview. Piper usa CPU y responde más rápido. Si Qwen falta, se usa Piper.")
+        self.quality.currentIndexChanged.connect(self._quality_changed)
+        settings.addWidget(QLabel("Voz:"))
+        settings.addWidget(self.quality)
+        settings.addWidget(self.review_button)
+        settings.addWidget(self.state)
+        settings.addStretch()
+        outer.addLayout(settings)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
         self.timer.start(150)
@@ -200,12 +212,22 @@ class VoicePanel(QWidget):
 
     def refresh(self):
         active = self.policy.state is State.ACTIVE
-        self.read.setEnabled(active and self.ready)
-        self.mic.setEnabled(active and self.ready)
+        self.read.setEnabled(active)
+        self.mic.setEnabled(active)
         self.devices.setEnabled(active and self.mic.isChecked() and not self._capturing)
         self.record.setEnabled(active and self.ready and self.mic.isChecked() and self._worker is None)
         self.stop_button.setEnabled(active)
+        self.review_button.setEnabled(active)
+        self.quality.setEnabled(active)
         self.record.setText("Terminar dictado" if self._capturing else "Dictar")
+
+    def _quality_changed(self, index):
+        self.prefer_natural = index == 0
+        try:
+            self.stop_and_wait()
+        except (AudioError, RuntimeError):
+            self.notice.emit("No se pudo confirmar el cierre del motor anterior.")
+        self.refresh()
 
     def _toggle_voice(self, value):
         if value and self.policy.state is State.ACTIVE:
@@ -217,35 +239,56 @@ class VoicePanel(QWidget):
             self.stop()
         self.refresh()
 
-    def _toggle_mic(self, value):
+    def set_microphone_enabled(self, value, *, query_devices=False):
+        if self.policy.state is not State.ACTIVE:
+            return
+        self.mic.blockSignals(True)
+        self.mic.setChecked(value)
+        self.mic.blockSignals(False)
         if value:
-            answer = QMessageBox.question(self, "Permitir dictado local",
-                "El micrófono se abre solo al pulsar Dictar, por hasta 30 segundos. "
-                "El audio permanece en RAM y se transcribe en esta PC. Revisás el texto antes de Enviar. ¿Habilitar?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
-            if answer != QMessageBox.StandardButton.Yes:
-                self.mic.blockSignals(True)
-                self.mic.setChecked(False)
-                self.mic.blockSignals(False)
-                return
-            try:
-                self.policy.grant("microphone.devices")
-                self.policy.grant("microphone.capture")
-                self.policy.grant("speech.transcribe")
-                devices = self.audio.devices()
-                self.devices.blockSignals(True)
-                self.devices.clear()
-                self.devices.addItem("Predeterminado del sistema", None)
-                for device in devices:
-                    self.devices.addItem(device["name"], device["index"])
-                self.devices.blockSignals(False)
-            except (AudioError, Denied):
-                self.notice.emit("No se pudieron consultar los micrófonos. Revisá los permisos de Windows.")
-        elif self.policy.state is State.ACTIVE:
-            self.policy.revoke("microphone.capture")
-            self.policy.revoke("microphone.devices")
-            self.policy.revoke("speech.transcribe")
+            for operation in ("microphone.devices", "microphone.capture", "speech.transcribe"):
+                self.policy.grant(operation)
+            if query_devices:
+                try:
+                    devices = self.audio.devices()
+                    self.devices.blockSignals(True)
+                    self.devices.clear()
+                    self.devices.addItem("Predeterminado del sistema", None)
+                    for device in devices:
+                        self.devices.addItem(device["name"], device["index"])
+                    self.devices.blockSignals(False)
+                except (AudioError, Denied):
+                    self.notice.emit("No se pudieron consultar los micrófonos. Revisá los permisos de Windows.")
+        else:
+            for operation in ("microphone.capture", "microphone.devices", "speech.transcribe"):
+                self.policy.revoke(operation)
             self.stop()
+        self.refresh()
+
+    def _toggle_mic(self, value):
+        self.set_microphone_enabled(value, query_devices=value)
+
+    def review_engine(self):
+        if self.policy.state is not State.ACTIVE:
+            return
+        self.stop_and_wait()
+        root = engine_root()
+        if not engine_ready(root):
+            folder = QFileDialog.getExistingDirectory(self, "Elegí la carpeta del motor preparado (venv y models)")
+            if not folder:
+                self.notice.emit("Falta preparar el motor de voz. Consultá la guía de instalación incluida.")
+                return
+            root = Path(folder)
+        try:
+            register_engine(root)
+        except (OSError, ValueError):
+            self.notice.emit("La carpeta no tiene el motor completo. No se cambió su configuración.")
+            return
+        self.root, self.ready = root, True
+        if self.mic.isChecked():
+            self.set_microphone_enabled(True, query_devices=True)
+        self.state.setText("Voz natural Qwen lista" if self.prefer_natural and qwen_ready() else "Voz Piper lista")
+        self.notice.emit("Motor reconocido. Leer respuestas reproduce los próximos mensajes; Dictar capta tu voz.")
         self.refresh()
 
     def _device_changed(self):
@@ -260,7 +303,8 @@ class VoicePanel(QWidget):
     def _launch(self, operation, value):
         self._job += 1
         lease = self.policy.begin("speech.transcribe" if operation == "stt" else "speech.synthesize")
-        job = SpeechJob(self._job, self.root, operation, value)
+        self._tts_started = time.monotonic()
+        job = SpeechJob(self._job, self.root, operation, value, backend="qwen" if operation == "tts" and self.prefer_natural and qwen_ready() else "piper")
         self._worker, self._lease = job, lease
         self._workers.add(job)
         job.result.connect(self._result)
@@ -272,6 +316,9 @@ class VoicePanel(QWidget):
     def speak(self, text):
         if not self.read.isChecked() or self.policy.state is not State.ACTIVE or self._capturing:
             return
+        if not self.ready:
+            self.notice.emit("Falta preparar el motor: pulsá Revisar voz.")
+            return
         self.stop()
         try:
             self._launch("tts", text)
@@ -280,7 +327,7 @@ class VoicePanel(QWidget):
             return
 
     def toggle_record(self):
-        if self.policy.state is not State.ACTIVE or not self.mic.isChecked():
+        if self.policy.state is not State.ACTIVE or not self.mic.isChecked() or not self.ready:
             return
         try:
             if self._capturing:
@@ -357,8 +404,11 @@ class VoicePanel(QWidget):
                 samples, rate = self._queue.pop(0)
                 self.audio.play_samples(samples, rate)
                 self.state.setText("Leyendo respuesta…")
+            elif self._worker is not None and getattr(self._worker, "operation", None) == "tts" and not self.audio.playing:
+                backend = "Qwen" if self._worker.backend == "qwen" else "Piper"
+                self.state.setText(f"Preparando {backend}… {int(time.monotonic() - self._tts_started)} s")
             elif not self._queue and self._worker is None and not self.audio.playing:
-                self.state.setText("Voz local lista" if self.ready else "Motor de voz no preparado")
+                self.state.setText(("Voz natural Qwen lista" if self.prefer_natural and qwen_ready() else "Voz Piper lista") if self.ready else "Falta motor · Revisar voz")
         except (AudioError, Denied):
             self.stop()
             self.notice.emit("Se detuvo el audio. Revisá el dispositivo seleccionado.")
