@@ -23,10 +23,7 @@ VOICE_NAME = "es_AR-daniela-high"
 
 
 def voice_root() -> Path:
-    base = os.environ.get("LOCALAPPDATA")
-    if not base:
-        base = os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local" / "share"))
-    return Path(base).resolve() / "CompanionIA" / "voice-engine"
+    return Path.home() / ".companion-ia" / "voice-engine"
 
 
 def install(root: Path) -> None:
@@ -79,6 +76,11 @@ manifest = {'piper_repository': repo, 'piper_revision': revision,
         "Daniela voice: dataset CC-BY-SA-4.0; consult models/piper/MODEL_CARD.\n"
         "Source/model licenses remain applicable. Process separation alone is not a license determination.\n",
         encoding="utf-8")
+    config = Path.home() / ".companion-ia" / "voice-location.json"
+    config.parent.mkdir(parents=True, exist_ok=True)
+    temporary = config.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"version": 1, "root": str(root)}), encoding="utf-8")
+    temporary.replace(config)
     print(json.dumps({"python": str(python), "worker": str(root / "speech_engine.py"),
                       "voice_path": str(root / "models" / "piper" / (VOICE_NAME + ".onnx")),
                       "model_path": str(root / "models" / "whisper-base")}, indent=2))

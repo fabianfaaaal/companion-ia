@@ -1,3 +1,5 @@
+> Documento del hito anterior. Para preferencias activadas de inicio y corrección de detección, consultar [voice-ready-preview](voice-ready-preview.md).
+
 # Prueba de notas y voz local
 
 Este preview suma notas manuales y audio al chat. El archivo ejecutable está en dist/memory-voice-preview/CompanionIA/CompanionIA.exe. Mantener _internal junto al programa; no sustituye la versión de escritorio anterior.

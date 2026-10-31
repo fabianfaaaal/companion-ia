@@ -17,3 +17,5 @@ This preview is not a security-audited or signed installer. Packaging of additio
 NumPy (BSD), sounddevice (MIT), PortAudio (MIT) y CFFI (MIT) aportan captura/reproducción y arrays al ejecutable. Se conservan los avisos disponibles en sus paquetes.
 Piper y faster-whisper se instalan opcionalmente en un entorno independiente; sus paquetes/modelos no están incluidos en este ZIP. Piper es GPL-3.0-or-later, faster-whisper MIT; Daniela declara dataset CC-BY-SA-4.0 en su MODEL_CARD. Consultar docs/voice-notes-preview.md y las licencias/atribuciones del directorio del motor.
 - Pillow 13.0.0: HPND license and bundled imaging-library notices, included from wheel metadata in licenses/Pillow. Used for local photo validation and thumbnails.
+
+- Qwen3-TTS-12Hz-0.6B-CustomVoice and qwen-tts: optional separately prepared Apache-2.0 runtime/model; not bundled in the Qt ZIP. PyTorch/Torchaudio and dependencies retain their own licenses. The preparer records immutable model revision, installed versions and license metadata under ~/.companion-ia/qwen-voice-engine. See docs/voice-ready-preview.md.

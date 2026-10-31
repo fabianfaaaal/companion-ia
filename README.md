@@ -36,14 +36,14 @@ Estas funciones son objetivos del producto; la tabla de estado más abajo distin
 | Componente | Estado |
 | --- | --- |
 | Núcleo de autorización y revocación de permisos | Implementado y probado con acciones ficticias |
-| Memoria deshabilitada por defecto en la política | Implementado; archivo local de notas, agenda y fotos opcional |
+| Memoria y preferencias | Núcleo deniega sin permisos; interfaz inicia funciones activadas y recuerda lo que desmarques |
 | Modo privado y rechazo de resultados tardíos | Implementado al nivel del núcleo |
 | Persistencia del estado privado | Probada cuando se configura una ruta de estado |
 | Control básico de acceso restringido | Implementado; autenticación local pendiente |
-| Pruebas automatizadas | 118 casos locales aprobados (políticas, transporte, notas, audio, motores e interfaz) |
+| Pruebas automatizadas | 136 casos locales aprobados (políticas, transporte, notas, audio, motores e interfaz) |
 | Chat, interfaz y conexión Ollama | Prototipo Windows verificado con saludo sintético; aceptación del usuario pendiente |
 | Notas manuales, búsqueda y recuperación | Integradas con memoria opcional; conversación sigue temporal |
-| Voz y dictado | Preview local: lectura de respuesta final y dictado revisable por botón |
+| Voz y dictado | Piper o Qwen3-TTS opcional; Whisper local por botón. Motor registrado entre contextos Windows |
 | Fotos y Cinemateca inicial | Importación manual, miniaturas, notas y búsqueda textual; sin análisis visual |
 | Calendario, recordatorios y alarmas | Avisos dentro de la app, con memoria y avisos activos; sonido opt-in |
 | Búsqueda web | Bing/Wikipedia con autorización por consulta, fragmentos y enlaces |
@@ -54,6 +54,8 @@ Estas funciones son objetivos del producto; la tabla de estado más abajo distin
 Las pruebas usan datos sintéticos. Se comprobó un recorrido real de ventana y modelo local, además de controles automatizados; no constituye una auditoría de seguridad ni aceptación de experiencia. El archivo íntimo con datos reales requiere protección de contenido y claves antes de habilitarse.
 
 ## Probar notas y voz
+
+Ver [voz preparada y preferencias iniciales](docs/voice-ready-preview.md). En el primer inicio, los controles de funciones disponibles vienen activados; desmarcarlos recuerda tu elección. Micrófono habilitado permite Dictar, sin escucha continua.
 
 Ver [herramientas integradas](docs/integrated-tools-preview.md) y [notas y voz](docs/voice-notes-preview.md). Guardar una nota no programa recordatorios. El audio requiere permisos propios; el motor neural opcional y sus modelos se preparan fuera del repositorio.
 

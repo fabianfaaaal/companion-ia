@@ -26,6 +26,7 @@ from companion.cinematheque_panel import CinemathequePanel
 from companion.environment_panel import EnvironmentPanel
 from companion.web_panel import WebPanel
 from companion.session import requested_tool
+from companion.preferences import Preferences
 
 STYLE = """
 QWidget { background:#101825; color:#e6edf5; font-family:'Segoe UI'; font-size:14px; }
@@ -126,6 +127,8 @@ class Window(QMainWindow):
         self._lease = None
         self._pending_user = ""
         self._response_started = None
+        self._preferences = Preferences(state_path.parent / "preferences.json")
+        self._preference_values = None
         self._thinking = {}
         self._last_sources = []
         if self.policy.state is State.ACTIVE:
@@ -149,6 +152,10 @@ class Window(QMainWindow):
         note.setObjectName("muted")
         self.session_note = note
         layout.addWidget(note)
+        self.defaults_note = QLabel("Funciones disponibles: podés habilitarlas o desmarcarlas desde sus controles.")
+        self.defaults_note.setWordWrap(True)
+        self.defaults_note.setObjectName("muted")
+        layout.addWidget(self.defaults_note)
         self.memory_panel = MemoryPanel(self.policy, state_path.parent, self)
         self.memory_panel.changed.connect(self._memory_changed)
         layout.addWidget(self.memory_panel)
@@ -261,6 +268,49 @@ class Window(QMainWindow):
         self._refresh()
         if auto_connect and self.policy.state is State.ACTIVE:
             QTimer.singleShot(200, self.detect_models)
+
+    def enable_preferences(self):
+        self._preference_values = self._preferences.load()
+        controls = {
+            "memory": self.memory_panel.toggle, "voice": self.voice_panel.read,
+            "microphone": self.voice_panel.mic, "notices": self.agenda_panel.toggle,
+            "foreground": self.environment.allow, "environment_context": self.environment.share,
+            "web": self.web_panel.allow, "web_context": self.web_panel.use,
+        }
+        for key, checkbox in controls.items():
+            # Only an actual user click changes saved preferences. Private-mode
+            # cleanup and one-use web context consumption are transient overrides.
+            checkbox.clicked.connect(lambda checked, key=key: self._remember_option(key, checked))
+        self.voice_panel.quality.activated.connect(lambda index: self._remember_option("natural_voice", index == 0))
+        self._apply_preferences()
+
+    def _remember_option(self, key, checked):
+        if self._preference_values is None or self.policy.state is not State.ACTIVE:
+            return
+        self._preference_values[key] = bool(checked)
+        try:
+            self._preferences.save(self._preference_values)
+        except OSError:
+            self.status.setText("No se pudo guardar esta preferencia. Se aplica solo a esta sesión.")
+
+    def _apply_preferences(self):
+        if self._preference_values is None or self.policy.state is not State.ACTIVE:
+            return
+        options = self._preference_values
+        self.memory_panel.set_enabled(options["memory"])
+        self.voice_panel.quality.setCurrentIndex(0 if options["natural_voice"] else 1)
+        self.voice_panel.prefer_natural = options["natural_voice"]
+        self.voice_panel.read.setChecked(options["voice"])
+        self.voice_panel.set_microphone_enabled(options["microphone"])
+        self.agenda_panel.toggle.setChecked(options["notices"] and options["memory"])
+        self.environment.set_observation_enabled(options["foreground"])
+        self.environment.share.setChecked(options["environment_context"])
+        self.web_panel.allow.setChecked(options["web"])
+        self.web_panel.use.setChecked(options["web_context"])
+        self.defaults_note.setText(
+            "Inicio con funciones activadas; podés desmarcarlas. Memoria local sin cifrar; "
+            "micrófono solo con Dictar. Entorno observa títulos en RAM; Web envía consultas al pulsar Buscar.")
+        self._refresh()
 
     def _show_response_time(self):
         if self._response_started is not None:
@@ -497,6 +547,10 @@ class Window(QMainWindow):
     def _finished(self, worker):
         if self._worker is worker:
             self._worker = None
+            if self._response_started is not None:
+                self._response_started = None
+                self.response_time.setText("Respuesta: descartada")
+                self.status.setText("La solicitud terminó sin respuesta publicable, posiblemente por un cambio de permisos. Podés reenviarla.")
         worker.deleteLater()
         self._refresh()
 
@@ -567,6 +621,7 @@ class Window(QMainWindow):
                 if not self._stopper_registered:
                     self.policy.register_stopper(self._stop_for_private)
                     self._stopper_registered = True
+                self._apply_preferences()
                 self.status.setText("Reactivada. Pulsá Detectar Ollama para continuar.")
             except (OSError, Denied):
                 self.status.setText("No se pudo reactivar. Se mantiene el bloqueo.")
@@ -637,6 +692,8 @@ def main(argv=None):
         QMessageBox.information(None, "Companion IA", "Companion ya está abierto en esta cuenta.")
         return 1
     window = Window(data_dir / "privacy.json", auto_connect=not args.smoke_test)
+    if not args.smoke_test:
+        window.enable_preferences()
     window.show()
     if args.smoke_test:
         def capture():

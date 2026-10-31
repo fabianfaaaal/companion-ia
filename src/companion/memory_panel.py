@@ -38,19 +38,6 @@ class MemoryPanel(QWidget):
         self.browse.setEnabled(active and self.enabled and not busy)
 
     def _toggle(self, value):
-        if value:
-            answer = QMessageBox.question(self, "Activar memoria de notas",
-                "Habilita el archivo local de notas, agenda y fotos. Cada alta requiere confirmación y podrá usarse como contexto descriptivo. "
-                "No se copia el chat automáticamente ni se importa esta sesión. "
-                "Este prototipo no cifra las notas: usá información general. "
-                "Desactivar memoria limpia la charla actual, pero conserva las notas. ¿Activar?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                QMessageBox.StandardButton.No)
-            if answer != QMessageBox.StandardButton.Yes:
-                self.toggle.blockSignals(True)
-                self.toggle.setChecked(False)
-                self.toggle.blockSignals(False)
-                return
         self.set_enabled(value)
 
     def set_enabled(self, value):
