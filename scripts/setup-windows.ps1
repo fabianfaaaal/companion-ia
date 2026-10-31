@@ -104,13 +104,13 @@ if (-not $ollamaExe) {
 
 Write-Host 'No existing Ollama settings were changed.'
 Write-Host 'For local-only mode see docs/setup-windows.md. Downloading a local model does not disable cloud features globally.'
-Write-Host 'Optional starter model: qwen3:4b (about 2.5 GB; Apache-2.0 in its official model card).'
+Write-Host 'Optional starter model: qwen2.5:7b (about 4.7 GB; Apache-2.0 in its official model card).'
 Write-Host 'Skip this download if you already have a suitable local model.'
-if ((Read-Host 'Download qwen3:4b now? [y/N]') -eq 'y') {
+if ((Read-Host 'Download qwen2.5:7b now? [y/N]') -eq 'y') {
     $previousHost = $env:OLLAMA_HOST
     try {
         $env:OLLAMA_HOST = '127.0.0.1:11434'
-        & $ollamaExe pull qwen3:4b
+        & $ollamaExe pull qwen2.5:7b
         if ($LASTEXITCODE -ne 0) { throw 'Model download did not complete. It can be retried.' }
     } finally { $env:OLLAMA_HOST = $previousHost }
 }

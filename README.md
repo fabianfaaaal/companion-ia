@@ -6,7 +6,7 @@ Companion IA es un proyecto gratuito y de código abierto que explora cómo cons
 
 Queremos que puedas conversar con una compañera o mascota con personalidad propia, compartir lo que elijas y, si habilitás la memoria, volver a esos momentos desde una **Cinemateca de Recuerdos**.
 
-> **Estado: prueba de concepto en desarrollo temprano.** Hoy existe un núcleo de permisos en Python con pruebas automatizadas. Todavía no hay aplicación de escritorio, chat conectado a un modelo ni instaladores.
+> **Estado: prototipo de escritorio en desarrollo temprano.** Primera ventana Windows con chat Ollama y modo privado. Paquete ejecutable portable para pruebas; todavía sin instalador completo, memoria autobiográfica ni Cinemateca.
 
 ## Qué queremos demostrar
 
@@ -40,13 +40,13 @@ Estas funciones son objetivos del producto; la tabla de estado más abajo distin
 | Modo privado y rechazo de resultados tardíos | Implementado al nivel del núcleo |
 | Persistencia del estado privado | Probada cuando se configura una ruta de estado |
 | Control básico de acceso restringido | Implementado; autenticación local pendiente |
-| Pruebas automatizadas | 19 casos locales aprobados en Python 3.12.14 sobre Windows (políticas y diagnóstico) |
-| Chat, interfaz y conexión Ollama | Pendientes |
+| Pruebas automatizadas | 46 casos locales aprobados (políticas, transporte, sesión e interfaz) |
+| Chat, interfaz y conexión Ollama | Prototipo Windows verificado con saludo sintético; aceptación del usuario pendiente |
 | Fichas, recuerdos, fotos y Cinemateca | Pendientes |
 | Cifrado del archivo íntimo, agenda y sensores | Pendientes |
 | Android, distribución Linux e instaladores | Pendientes |
 
-Las pruebas actuales verifican políticas con datos sintéticos. No constituyen una auditoría de seguridad ni prueban una aplicación integrada. El archivo íntimo con datos reales requiere protección de contenido y claves antes de habilitarse.
+Las pruebas usan datos sintéticos. Se comprobó un recorrido real de ventana y modelo local, además de controles automatizados; no constituye una auditoría de seguridad ni aceptación de experiencia. El archivo íntimo con datos reales requiere protección de contenido y claves antes de habilitarse.
 
 ## Desarrollo asistido por IA
 
@@ -66,7 +66,7 @@ La generación de código y la revisión por otra IA pueden ayudar a encontrar p
 
 ## Preparar el motor local
 
-Incluimos un [preparador Windows y guía paso a paso](docs/setup-windows.md) y un diagnóstico local de la API de Ollama. Son herramientas de preparación; todavía no hay instalador completo de Companion ni chat integrado.
+Incluimos un [preparador Windows y guía paso a paso](docs/setup-windows.md) y un diagnóstico local de la API de Ollama. El chat integrado está en prueba; todavía no hay instalador completo de Companion. Ver [uso del prototipo ejecutable](docs/desktop-prototype.md).
 
 ## Arquitectura
 
@@ -75,8 +75,8 @@ El diseño adoptado parte de un núcleo modular y una aplicación de escritorio.
 | Capa | Elección | Situación |
 | --- | --- | --- |
 | Núcleo | Python 3.12+ | Base actual |
-| Escritorio | PySide6 / Qt Quick | Adoptado, sin integrar |
-| Modelo local | Ollama mediante adaptador | Adoptado, sin integrar |
+| Escritorio | PySide6 / Qt Widgets | Primera ventana implementada; Qt Quick sigue como opción posterior |
+| Modelo local | Ollama mediante adaptador | Integrado en prueba con modelos locales verificados |
 | Memoria y búsqueda | SQLite / FTS5 | Adoptado, sin integrar |
 | Cliente Android | Kotlin / Jetpack Compose | Planificado |
 
@@ -108,7 +108,7 @@ python -B -m unittest discover -s tests -v
 
 Estas pruebas usan la biblioteca estándar; no requieren Ollama, GPU ni dependencias de interfaz. Los casos de persistencia crean estado técnico ficticio en directorios temporales.
 
-Este comando ejecuta pruebas; todavía no abre un companion.
+Este comando ejecuta pruebas. Para abrir o construir la ventana ver [prototipo de escritorio](docs/desktop-prototype.md). Instalar requirements-desktop.txt para incluir las pruebas de interfaz; sin Qt se omiten esas pruebas.
 
 ## Privacidad como requisito
 
@@ -129,7 +129,7 @@ No incorporar datos personales, claves, capturas reales ni exportaciones de usua
 - [x] Definir la visión y los contratos iniciales.
 - [x] Crear el núcleo inicial de permisos y sus pruebas.
 - [ ] Completar el entorno reproducible y las verificaciones automáticas.
-- [ ] Conversar con un modelo local desde Windows.
+- [x] Conversar con un modelo local desde una ventana Windows de prueba.
 - [ ] Configurar personalidad y completar el tutorial.
 - [ ] Guardar y recuperar el primer recuerdo con una fotografía.
 - [ ] Inspeccionar el contexto, exportar y borrar datos.

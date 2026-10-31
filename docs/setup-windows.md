@@ -15,8 +15,8 @@ No hace falta instalar Open WebUI, Docker, Node o Android Studio para ejecutar e
 
 1. Abrí [Ollama para Windows](https://ollama.com/download/windows), descargá el instalador oficial y ejecutalo. Dejá la ubicación predeterminada.
 2. Abrí Ollama desde Inicio. Queda funcionando en segundo plano; Companion se conectará a su API local.
-3. En PowerShell ejecutá `ollama pull qwen3:4b` para obtener el modelo inicial sugerido. La ficha oficial indica aproximadamente 2.5 GB; la descarga requiere Internet. Si ya tenés un modelo apropiado, no lo descargues de nuevo.
-4. Para una prueba manual opcional ejecutá `ollama run qwen3:4b`, escribí un saludo ficticio y salí con `/bye`. Esto prueba Ollama, no Companion. No usar datos íntimos para la prueba.
+3. En PowerShell ejecutá `ollama pull qwen2.5:7b` para obtener el modelo inicial sugerido. La ficha oficial indica aproximadamente 4.7 GB; la descarga requiere Internet. Si ya tenés un modelo apropiado, no lo descargues de nuevo.
+4. Para una prueba manual opcional ejecutá `ollama run qwen2.5:7b`, escribí un saludo ficticio y salí con `/bye`. Esto prueba Ollama, no Companion. No usar datos íntimos para la prueba.
 5. Desde la raíz del repositorio, `python src/companion/doctor.py` revisa la API y cuenta modelos; no realiza conversaciones ni descarga archivos.
 
 Si `ollama` no aparece, cerrá y reabrí PowerShell después de instalar. No instales una segunda copia sin revisar la instalación existente.
@@ -66,4 +66,4 @@ La integración futura deberá validar la modalidad, elegir modelos locales y nu
 - [Ollama Windows](https://docs.ollama.com/windows)
 - [API de modelos](https://docs.ollama.com/api/tags)
 - [Local-only y configuración](https://docs.ollama.com/faq)
-- [Modelo qwen3:4b y licencia](https://ollama.com/library/qwen3:4b)
+- [Modelo qwen2.5:7b y licencia](https://ollama.com/library/qwen2.5:7b)
