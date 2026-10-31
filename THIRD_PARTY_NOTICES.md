@@ -16,3 +16,4 @@ This preview is not a security-audited or signed installer. Packaging of additio
 ## Audio del preview de notas y voz
 NumPy (BSD), sounddevice (MIT), PortAudio (MIT) y CFFI (MIT) aportan captura/reproducción y arrays al ejecutable. Se conservan los avisos disponibles en sus paquetes.
 Piper y faster-whisper se instalan opcionalmente en un entorno independiente; sus paquetes/modelos no están incluidos en este ZIP. Piper es GPL-3.0-or-later, faster-whisper MIT; Daniela declara dataset CC-BY-SA-4.0 en su MODEL_CARD. Consultar docs/voice-notes-preview.md y las licencias/atribuciones del directorio del motor.
+- Pillow 13.0.0: HPND license and bundled imaging-library notices, included from wheel metadata in licenses/Pillow. Used for local photo validation and thumbnails.

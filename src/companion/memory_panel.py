@@ -19,13 +19,13 @@ class MemoryPanel(QWidget):
         self.store = MemoryStore(data_dir / "memory.sqlite", policy)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.toggle = QCheckBox("Memoria de notas")
+        self.toggle = QCheckBox("Memoria local")
         self.toggle.toggled.connect(self._toggle)
         self.save = QPushButton("Guardar nota")
         self.save.clicked.connect(self.save_dialog)
         self.browse = QPushButton("Ver / borrar notas")
         self.browse.clicked.connect(self.browse_dialog)
-        self.info = QLabel("Solo se guardan notas que elijas.")
+        self.info = QLabel("Notas, avisos y fotos solo al confirmar.")
         self.info.setObjectName("muted")
         for widget in (self.toggle, self.save, self.browse, self.info):
             layout.addWidget(widget)
@@ -40,7 +40,7 @@ class MemoryPanel(QWidget):
     def _toggle(self, value):
         if value:
             answer = QMessageBox.question(self, "Activar memoria de notas",
-                "Se guardarán únicamente las notas que elijas, en esta PC, y podrán usarse como contexto. "
+                "Habilita el archivo local de notas, agenda y fotos. Cada alta requiere confirmación y podrá usarse como contexto descriptivo. "
                 "No se copia el chat automáticamente ni se importa esta sesión. "
                 "Este prototipo no cifra las notas: usá información general. "
                 "Desactivar memoria limpia la charla actual, pero conserva las notas. ¿Activar?",

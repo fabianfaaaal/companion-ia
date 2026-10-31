@@ -78,8 +78,9 @@ class Policy:
 
     def revoke(self, operation: str) -> None:
         with self._lock:
-            self._grants.discard(operation)
-            self._epoch += 1
+            if operation in self._grants:
+                self._grants.discard(operation)
+                self._epoch += 1
 
     def set_memory(self, enabled: bool) -> None:
         with self._lock:

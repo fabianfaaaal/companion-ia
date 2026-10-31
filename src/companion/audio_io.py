@@ -17,10 +17,11 @@ class AudioError(RuntimeError):
 
 
 class AudioIO:
-    def __init__(self, policy: Policy, *, module=None, numpy_module=None, input_device=None):
+    def __init__(self, policy: Policy, *, module=None, numpy_module=None, input_device=None, playback_operation="audio.playback"):
         if input_device is not None and (type(input_device) is not int or input_device < 0):
             raise ValueError("Dispositivo de entrada no válido.")
         self._policy = policy
+        self._playback_operation = playback_operation
         self._module = module
         self._numpy = numpy_module
         self._input_device = input_device
@@ -175,7 +176,7 @@ class AudioIO:
                 state["data"] = []
 
     def play_samples(self, samples, sample_rate: int) -> None:
-        lease = self._policy.begin("audio.playback")
+        lease = self._policy.begin(self._playback_operation)
         module, np = self._dependencies()
         if type(sample_rate) is not int or not 8000 <= sample_rate <= 96000:
             raise AudioError("Frecuencia de audio no válida.")
