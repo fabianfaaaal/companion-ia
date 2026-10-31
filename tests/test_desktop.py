@@ -47,16 +47,17 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(w.last_messages, [])
         self.assertEqual(w.transcript.toPlainText(), "")
         self.assertNotIn("secret", self.path.read_text())
-        self.assertFalse(w.input.isEnabled())
+        self.assertTrue(w.input.isEnabled())
 
     def test_restart_private_does_not_start_model_discovery(self):
         self.window.toggle_private()
         with patch("companion.desktop.Worker.start") as start:
             other = Window(self.path, auto_connect=True)
             self.app.processEvents()
-            other.detect_models()
             self.assertEqual(other.policy.state, State.PRIVATE)
             start.assert_not_called()
+            other.detect_models()
+            start.assert_called_once()
             other.close()
             other.deleteLater()
 

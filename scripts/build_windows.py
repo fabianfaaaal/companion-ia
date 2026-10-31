@@ -15,7 +15,7 @@ def main():
     if sys.platform != "win32":
         raise SystemExit("Build the Windows executable on Windows.")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--variant", default="memory-voice-preview", choices=["providers-preview", "voice-ready-preview", "interaction-preview", "tools-preview", "memory-voice-preview", "desktop-preview"])
+    parser.add_argument("--variant", default="memory-voice-preview", choices=["modern-chat-preview", "providers-preview", "voice-ready-preview", "interaction-preview", "tools-preview", "memory-voice-preview", "desktop-preview"])
     args = parser.parse_args()
     dist_root = ROOT / "dist" / args.variant
     build_env = os.environ.copy()
@@ -35,7 +35,7 @@ def main():
     shutil.copy2(ROOT / "LICENSE", target / "LICENSE")
     shutil.copy2(ROOT / "THIRD_PARTY_NOTICES.md", target / "THIRD_PARTY_NOTICES.md")
     shutil.copytree(ROOT / "third_party" / "licenses", target / "licenses", dirs_exist_ok=True)
-    guide = "providers-and-history.md" if args.variant == "providers-preview" else "voice-ready-preview.md" if args.variant == "voice-ready-preview" else ("integrated-tools-preview.md" if args.variant in ("tools-preview", "interaction-preview") else "voice-notes-preview.md")
+    guide = "modern-chat-preview.md" if args.variant == "modern-chat-preview" else "providers-and-history.md" if args.variant == "providers-preview" else "voice-ready-preview.md" if args.variant == "voice-ready-preview" else ("integrated-tools-preview.md" if args.variant in ("tools-preview", "interaction-preview") else "voice-notes-preview.md")
     shutil.copy2(ROOT / "docs" / guide, target / "COMO_PROBAR.md")
     for package in ("PySide6-Essentials", "shiboken6", "pyinstaller", "numpy", "sounddevice", "cffi", "pycparser", "Pillow"):
         distribution = importlib.metadata.distribution(package)

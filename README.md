@@ -1,175 +1,126 @@
-# Companion IA
+<div align="center">
 
-**Un companion configurable, con memoria opcional y una historia que puedas explorar.**
+![Companion IA — una compañera, tu mundo](docs/assets/companion-banner.svg)
 
-Companion IA es un proyecto gratuito y de código abierto que explora cómo construir una experiencia de compañía digital con modelos de lenguaje intercambiables, contexto autorizado y control del usuario sobre sus recuerdos.
+**Una compañera digital para conversar, crear y volver a tus recuerdos. ✨**
 
-Queremos que puedas conversar con una compañera o mascota con personalidad propia, compartir lo que elijas y, si habilitás la memoria, volver a esos momentos desde una **Cinemateca de Recuerdos**.
+![Estado](https://img.shields.io/badge/estado-alpha_en_desarrollo-a78bfa)
+![Licencia](https://img.shields.io/badge/código-Apache_2.0-75e4c2)
+![Windows](https://img.shields.io/badge/Windows-preview-4da8da)
+![Linux](https://img.shields.io/badge/Linux-pruebas_CI-f0c674)
+![Android](https://img.shields.io/badge/Android-planificado-9baec4)
 
-> **Estado: prototipo de escritorio en desarrollo temprano.** Ventana Windows con chat Ollama, notas, voz opcional, agenda, Cinemateca inicial de fotos y controles de web y entorno. Paquete portable para pruebas; todavía sin instalador completo ni archivo íntimo cifrado.
+**Alpha Windows · guardado inicial configurable · APIs externas con costos propios**
 
-## Qué queremos demostrar
+[Guía del preview Windows](docs/modern-chat-preview.md) · [La experiencia](#-la-experiencia) · [Qué funciona](#-qué-funciona-hoy) · [Probar](#-manos-a-la-obra) · [Cómo trabajamos](#-construido-con-ia-y-con-criterio)
 
-Que un companion puede responder con más continuidad si recibe el contexto adecuado, sin necesitar todo tu archivo personal en cada conversación.
+</div>
 
-La cadena que queremos validar es:
+## 💚 La experiencia
 
-**Entrada autorizada → contexto relevante → modelo seleccionado → respuesta → recuerdo navegable, si elegiste conservarlo.**
+Companion IA explora una idea: **que cambiar de modelo no signifique empezar de cero con tu compañera**.
 
-La percepción propuesta consiste en procesar fuentes que vos habilitás. La continuidad y personalidad son comportamientos del software; no implican conciencia o comprensión infalible.
+El programa organiza la personalidad, el contexto y los recuerdos que habilitás. Ollama puede generar la respuesta en tu PC; también hay adaptadores para DeepSeek y OpenAI con cuentas propias. La voz lee esa respuesta y el chat te muestra qué motor intervino.
 
-## La experiencia que estamos diseñando
+Queremos que puedas charlar, trabajar, configurar una mascota o una compañera y explorar momentos desde una Memoteca. **Hay un prototipo para probar y bastante por construir.** La continuidad es una función del software; no implica conciencia ni comprensión infalible.
 
-Estas funciones son objetivos del producto; la tabla de estado más abajo distingue lo que ya existe.
+## 🚀 Qué funciona hoy
 
-- **Compañía configurable.** Nombre, estilo, humor y forma de hablar. El primer perfil será una compañera amistosa y risueña, capaz de acompañar una charla, ayudar a trabajar y revisar experiencias con vos.
-- **Tutorial inicial y claves de contexto.** Asociar palabras a fichas: por ejemplo, «mi mascota» recupera la información que decidiste guardar sobre ella. Las ambigüedades se aclaran.
-- **Memoria opcional.** Sin activarla, el contenido de la conversación deberá permanecer en la sesión. Activarla permite conservar información dentro del alcance autorizado.
-- **Cinemateca de Recuerdos.** Explorar notas, fotos y conversaciones por momentos, fechas y relaciones.
-- **Contexto inspeccionable.** Consultar qué fuentes se utilizaron y qué contenido se envió realmente al modelo. Un relato generado queda identificado como interpretación.
-- **Intimidad controlada.** Separar temas generales y restringidos. Frases como «estamos solos» pueden sugerir reserva, pero no autentican ni desbloquean el archivo íntimo.
-- **Agenda y retrospectiva.** Proponer recordatorios y reconstruir acontecimientos a partir de fuentes, distinguiendo planes tentativos de compromisos confirmados.
-- **Percepción autorizada.** Más adelante, incorporar voz, imágenes y otras señales con permisos específicos. Inactividad no equivale a sueño confirmado.
+| Experiencia | Estado del preview |
+|---|---|
+| 💬 Chat con globos y emojis | Usuario a la derecha, companion a la izquierda, texto seleccionable |
+| 🗂️ Conversaciones a mano | Lista lateral, guardado automático con memoria activa, abrir, renombrar y borrar |
+| 🎛️ Perfiles de privacidad | Completo, Concentrado, Solo chat y perfiles configurables |
+| 🔒 Chat privado | Solo chat local temporal; apaga memoria, percepción, voz y APIs externas |
+| 🪄 Dispositivo flotante | Ventana compacta sin marco, acceso al programa completo y tres pieles |
+| 🖼️ Memoteca independiente | Galería de fotos/descripciones en otra ventana, con los mismos permisos |
+| 🧠 Contexto recuperable | Notas e historiales seleccionados, fuentes inspeccionables |
+| 🔌 Modelos intercambiables | Ollama local; adaptadores DeepSeek/OpenAI y respaldo local informado |
+| 🎭 Personalidad | Nombre, perfil, estilo e instrucciones propias |
+| 🎙️ Voz y dictado | Piper o Qwen TTS opcional; Whisper local por botón |
+| 🗓️ Agenda y alarmas | Avisos locales con aplicación abierta y controles activos |
+| 🌐 Web y entorno | Búsqueda explícita y títulos de ventanas autorizados; sin cámara |
 
-## Qué existe hoy
+**Estado: alpha Windows.** Los adaptadores externos tienen pruebas sintéticas; una cuenta y su clave son necesarias para validar el servicio real. Linux tiene pruebas de código/interfaz en CI; todavía no se entrega un paquete Linux aceptado. Android está planificado.
 
-| Componente | Estado |
-| --- | --- |
-| Núcleo de autorización y revocación de permisos | Implementado y probado con acciones ficticias |
-| Memoria y preferencias | Núcleo deniega sin permisos; interfaz inicia funciones activadas y recuerda lo que desmarques |
-| Modo privado y rechazo de resultados tardíos | Implementado al nivel del núcleo |
-| Persistencia del estado privado | Probada cuando se configura una ruta de estado |
-| Control básico de acceso restringido | Implementado; autenticación local pendiente |
-| Pruebas automatizadas | 183 casos locales aprobados (políticas, transporte, notas, audio, motores e interfaz) |
-| Chat, interfaz y conexión Ollama | Prototipo Windows verificado con saludo sintético; aceptación del usuario pendiente |
-| Notas manuales, búsqueda y recuperación | Integradas con memoria opcional; conversación sigue temporal |
-| Voz y dictado | Piper o Qwen3-TTS opcional; Whisper local por botón. Motor registrado entre contextos Windows |
-| Fotos y Cinemateca inicial | Importación manual, miniaturas, notas y búsqueda textual; sin análisis visual |
-| Calendario, recordatorios y alarmas | Avisos dentro de la app, con memoria y avisos activos; sonido opt-in |
-| Búsqueda web | Bing/Wikipedia con autorización por consulta, fragmentos y enlaces |
-| Contexto ambiental inicial | Estado autoinformado y título de ventana autorizado en Windows, solo RAM |
-| Proveedores externos y respaldo local | DeepSeek/OpenAI implementados con pruebas simuladas; conexión real pendiente de claves |
-| Historiales multicuenta | Importación seleccionada ChatGPT JSON/normalizado, contexto filtrable y borrado |
-| Personalidad y profundidad | Pestaña de perfil y selección Auto/Breve/Profunda |
-| Archivo íntimo cifrado, cámara y escucha permanente | Pendientes |
-| Android, distribución Linux e instaladores | Pendientes |
+### Lo que todavía estamos construyendo 🛠️
 
-Las pruebas usan datos sintéticos. Se comprobó un recorrido real de ventana y modelo local, además de controles automatizados; no constituye una auditoría de seguridad ni aceptación de experiencia. El archivo íntimo con datos reales requiere protección de contenido y claves antes de habilitarse.
+Tutorial de palabras clave, archivo íntimo cifrado, instalador unificado, sincronización de historiales, más proveedores y una Cinemateca con relatos/video. Cámara, interpretación visual y escucha continua no están integradas.
 
-## Proveedores e historiales
+Qwen TTS está disponible como experimento de voz y resultó lento en la PC de referencia; Piper es la alternativa de menor demora. No prometemos conversación de voz en tiempo real.
 
-Ver [guía de proveedores, cuentas e importación](docs/providers-and-history.md). Ollama es la ruta inicial sin tarifa de API; servicios externos requieren credenciales y autorización de cargos del usuario. Los conectores no dan acceso automático a chats previos.
+## 🧭 Tus controles importan
 
-## Probar notas y voz
+El primer inicio normal trae funciones habilitadas, incluido el guardado del chat. **Las opciones que desmarcás y los perfiles elegidos se recuerdan.** Guardar, usar contexto y enviarlo a otro proveedor son decisiones distintas.
 
-Ver [voz preparada y preferencias iniciales](docs/voice-ready-preview.md). En el primer inicio, los controles de funciones disponibles vienen activados; desmarcarlos recuerda tu elección. Micrófono habilitado permite Dictar, sin escucha continua.
+- **Memoria activa:** conserva los mensajes visibles del chat; notas, fotos e importaciones tienen sus controles.
+- **Memoria apagada:** no accede al archivo conservado; el chat nuevo vive en esa sesión.
+- **Modo privado:** prevalece sobre todos los perfiles. Solo queda un chat local temporal y se limpia al salir; no utiliza recuerdos, sensores, personalidad personalizada ni APIs externas.
+- **API externa:** requiere cuenta, clave y autorización de sus posibles cargos. No hay compras ni recargas automáticas.
+- **Micrófono:** permiso para pulsar Dictar; no es una grabadora ambiental permanente.
 
-Ver [herramientas integradas](docs/integrated-tools-preview.md) y [notas y voz](docs/voice-notes-preview.md). Guardar una nota no programa recordatorios. El audio requiere permisos propios; el motor neural opcional y sus modelos se preparan fuera del repositorio.
+El archivo de recuerdos **todavía no está cifrado**. Usá información de prueba o general; no es una entrega preparada para almacenar intimidad real. Privado desconecta funciones, pero no borra por sí solo lo que ya guardaste. La cancelación no puede retirar datos ya enviados a un proveedor.
 
-## Desarrollo asistido por IA
+## 🧩 La cadena que estamos validando
 
-Este proyecto nace de una mezcla de exploración rápida —a veces llamada *vibe coding*— y trabajo deliberado sobre requisitos, arquitectura y pruebas.
+**Tu mensaje → contexto permitido → preparación local → modelo elegido → respuesta visible → voz opcional.**
 
-Usamos Codex y agentes de IA para proponer diseños, escribir código, revisar cambios y documentar avances. La dirección del proyecto mantiene la responsabilidad sobre las decisiones, el alcance y lo que se publica.
+Si falla el proveedor externo, el programa puede continuar con Ollama usando el mismo contexto filtrado, y te informa el cambio. Una promesa del modelo no es un recibo de una acción ejecutada.
 
-Nuestro método:
+Los historiales importados conservan cuenta y autor. Una respuesta de otro asistente es un registro de conversación, no un hecho verificado sobre vos.
 
-1. Convertir una idea en un incremento con un criterio de aceptación.
-2. Definir responsabilidades y contratos antes de conectar componentes.
-3. Implementar cambios pequeños y revisar sus límites.
-4. Ejecutar pruebas pertinentes y registrar su resultado.
-5. Separar lo propuesto, lo implementado, lo probado y lo aceptado por una persona.
+## 🏁 Manos a la obra
 
-La generación de código y la revisión por otra IA pueden ayudar a encontrar problemas; no garantizan que un cambio sea correcto. Preferimos mostrar evidencia y limitaciones antes que anunciar funcionalidades que todavía no funcionan.
+Esta etapa distribuye código y paquetes de prueba construidos localmente. **Todavía no hay instalador universal ni release estable.**
 
-## Preparar el motor local
+Guías:
 
-Incluimos un [preparador Windows y guía paso a paso](docs/setup-windows.md) y un diagnóstico local de la API de Ollama. El chat integrado está en prueba; todavía no hay instalador completo de Companion. Ver [uso del prototipo ejecutable](docs/desktop-prototype.md).
+- [Chat moderno, perfiles y dispositivo](docs/modern-chat-preview.md)
+- [Proveedores, cuentas e historiales](docs/providers-and-history.md)
+- [Preparar voz local](docs/voice-ready-preview.md)
+- [Preparar Ollama en Windows](docs/setup-windows.md)
 
-## Arquitectura
+### Ejecutar desde código en Windows
 
-El diseño adoptado parte de un núcleo modular y una aplicación de escritorio. El alcance actual del código es más pequeño:
+Python 3.12 y Ollama con un modelo local descargado. Desde la raíz del repositorio, en PowerShell:
 
-| Capa | Elección | Situación |
-| --- | --- | --- |
-| Núcleo | Python 3.12+ | Base actual |
-| Escritorio | PySide6 / Qt Widgets | Primera ventana implementada; Qt Quick sigue como opción posterior |
-| Modelo local | Ollama mediante adaptador | Integrado en prueba con modelos locales verificados |
-| Memoria y búsqueda | SQLite / FTS5 | Integrado para notas, agenda y fotos |
-| Cliente Android | Kotlin / Jetpack Compose | Planificado |
-
-Windows es la primera plataforma. Android será una extensión de la PC, que conservará la autoridad del archivo; Linux tendrá su propia validación y empaquetado. La portabilidad prevista no equivale a compatibilidad ya probada.
-
-Estructura actual:
-
-```text
-companion-ia/
-├── src/companion/
-│   ├── policy.py
-│   ├── desktop.py
-│   └── ...
-├── tests/
-│   ├── test_policy.py
-│   └── ...
-├── AGENTS.md
-├── LICENSE
-├── README.md
-└── pyproject.toml
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-build-windows.txt
+$env:PYTHONPATH = "src"
+.\.venv\Scripts\python.exe -m companion.desktop
 ```
 
-## Probar el núcleo
+La voz necesita su entorno y modelos separados, según su guía. Por defecto se usa Ollama; una suscripción a una web de chat no concede automáticamente acceso a su API o historial.
 
-Requisito: Python 3.12 o posterior.
+Para construir el paquete de este hito:
 
-Desde la raíz del repositorio:
-
-```shell
-python -B -m unittest discover -s tests -v
+```powershell
+.\.venv\Scripts\python.exe scripts/build_windows.py --variant modern-chat-preview
 ```
 
-Las pruebas básicas usan la biblioteca estándar; las de interfaz y fotos requieren requirements-desktop.txt. No requieren Ollama ni GPU. Los casos de persistencia crean estado técnico ficticio en directorios temporales.
+## 🧪 Lo probado y lo que falta aceptar
 
-Este comando ejecuta pruebas. Para abrir o construir la ventana ver [prototipo de escritorio](docs/desktop-prototype.md). Instalar requirements-desktop.txt para incluir las pruebas de interfaz; sin Qt se omiten esas pruebas.
+La suite local más reciente tiene **239 pruebas aprobadas**, con datos sintéticos. Incluye permisos, persistencia, cancelación, transporte, filtros de contexto, perfiles y widgets.
 
-## Privacidad como requisito
+```powershell
+.\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
+```
 
-El diseño separa tres controles:
+También se verifican recorridos de ventanas y ejecutables. Las pruebas automatizadas no equivalen a aceptación de naturalidad de voz, experiencia visual, precisión del dictado ni disponibilidad de un servicio externo. La RTX 3080 de 10 GB es el equipo de referencia, no un requisito ni una garantía de velocidad.
 
-- **Memoria:** decide si se conserva información personal y se recupera el archivo histórico.
-- **Acceso íntimo:** decide si el contexto restringido puede utilizarse en la sesión.
-- **Modo privado:** detiene el procesamiento y comunicaciones del companion bajo control de la aplicación.
+## 🤝 Construido con IA y con criterio
 
-Los permisos deben aplicarse en el núcleo, también al recuperar, enviar o guardar información. Personalidad, recuerdos y documentos no pueden concederlos.
+Sí: hay exploración rápida, código asistido por IA y entusiasmo por probar ideas. También hay contratos, pruebas y revisión de fallos.
 
-El funcionamiento local será la ruta básica prevista, sin API paga obligatoria. Un adaptador local tendrá que comprobar que el modelo realmente se ejecuta localmente y evitar sustituciones silenciosas por servicios externos.
+Trabajamos por hitos: **definir → implementar → probar → entregar un ejecutable → validar con una persona**. Codex y agentes delimitados ayudan a investigar, escribir y revisar; la dirección humana conserva las decisiones de producto y la responsabilidad de publicar.
 
-No incorporar datos personales, claves, capturas reales ni exportaciones de usuarios al repositorio.
+Preferimos una función pequeña comprobable a una lista de promesas. El objetivo es avanzar sin perder lo que hace valioso al proyecto: continuidad, compañía y control del usuario.
 
-## Próximos hitos
+## 🌱 Código abierto
 
-- [x] Definir la visión y los contratos iniciales.
-- [x] Crear el núcleo inicial de permisos y sus pruebas.
-- [ ] Completar el entorno reproducible y las verificaciones automáticas.
-- [x] Conversar con un modelo local desde una ventana Windows de prueba.
-- [ ] Configurar personalidad y completar el tutorial.
-- [ ] Guardar y recuperar el primer recuerdo con una fotografía.
-- [ ] Inspeccionar el contexto, exportar y borrar datos.
-- [ ] Completar la protección del archivo íntimo.
-- [ ] Incorporar agenda, voz y percepción por incrementos.
-- [ ] Validar Android y Linux.
+El código propio usa [Apache-2.0](LICENSE). Podés copiarlo y modificarlo bajo esa licencia. Dependencias, modelos y voces conservan sus condiciones: [avisos de terceros](THIRD_PARTY_NOTICES.md).
 
-Sin fechas de entrega comprometidas por ahora. Cada hito necesita evidencia propia.
+Companion IA no cobra por su código; un proveedor externo puede facturar su API. Por ahora **no aceptamos contribuciones externas de código**.
 
-## Contribuciones
-
-Por ahora no aceptamos aportes externos ni pull requests. El código sigue abierto: podés estudiarlo, copiarlo, modificarlo y redistribuir tu versión bajo las condiciones de Apache-2.0. Ver [política de contribuciones](CONTRIBUTING.md).
-
-## Licencia y costos
-
-Código propio bajo [Apache-2.0](https://www.apache.org/licenses/LICENSE-2.0); el repositorio incluye el texto en LICENSE.
-
-El objetivo es ofrecer una aplicación gratuita con funcionamiento básico local. Hardware, electricidad y servicios externos opcionales pueden tener costos. Modelos, voces, recursos y dependencias mantienen sus respectivas licencias.
-
----
-
-**La memoria pertenece al usuario.** Nuestra prueba de concepto busca dar continuidad al companion conservando la posibilidad de revisar, corregir, exportar y borrar lo que se decidió guardar.
+Gracias por acompañar esta etapa. Vamos construyendo la experiencia, una conversación y un hito a la vez. 💚

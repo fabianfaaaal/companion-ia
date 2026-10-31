@@ -25,7 +25,7 @@ class MemoryPanel(QWidget):
         self.save.clicked.connect(self.save_dialog)
         self.browse = QPushButton("Ver / borrar notas")
         self.browse.clicked.connect(self.browse_dialog)
-        self.info = QLabel("Notas, avisos y fotos solo al confirmar.")
+        self.info = QLabel("Mensajes guardados automáticamente al activar memoria.")
         self.info.setObjectName("muted")
         for widget in (self.toggle, self.save, self.browse, self.info):
             layout.addWidget(widget)
@@ -76,7 +76,7 @@ class MemoryPanel(QWidget):
         dialog.setWindowTitle("Guardar nota · Acción manual")
         dialog.resize(580, 440)
         layout = QVBoxLayout(dialog)
-        label = QLabel("Escribí qué querés conservar. No se programa ningún recordatorio y no se copia el chat.")
+        label = QLabel("Escribí qué querés conservar. Las conversaciones se guardan por separado; esta nota no programa recordatorios.")
         label.setWordWrap(True)
         layout.addWidget(label)
         title = QLineEdit()

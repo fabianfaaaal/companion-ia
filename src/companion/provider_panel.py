@@ -8,7 +8,8 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QCombo
     QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit, QTextEdit, QSpinBox)
 from .provider_accounts import AccountStore, AccountError
 from .policy import State, Denied
-from .remote_client import RemoteClient
+from .remote_client import RemoteClient, RemoteError
+from .ollama_client import Cancelled
 
 
 class BalanceJob(QThread):
@@ -22,6 +23,10 @@ class BalanceJob(QThread):
     def run(self):
         try:
             self.result.emit(self.client.balance())
+        except Cancelled:
+            pass
+        except RemoteError as error:
+            self.failure.emit(str(error))
         except Exception:
             self.failure.emit("No se pudo consultar el saldo. Revisá la cuenta y la conexión.")
 
@@ -300,9 +305,18 @@ class ProviderPanel(QWidget):
             return
         try:
             self.policy.publish(lease, lambda: self.status.setText(
-                json.dumps(result, ensure_ascii=False) if result.get("reported") else "El proveedor no informa saldo por este adaptador."))
+                self._balance_text(result)))
         except (Denied, AttributeError):
             pass
+
+    @staticmethod
+    def _balance_text(result):
+        if not result.get("reported"):
+            return "El proveedor no informa saldo por este adaptador."
+        available = result.get("is_available")
+        lead = "Conexión correcta. El proveedor informa saldo disponible." if available else "Conexión correcta. El proveedor informa saldo insuficiente para llamadas. Podés seguir con Ollama local."
+        values = ["Saldo reportado: " + str(item.get("currency","")) + " " + str(item.get("total_balance","no informado")) for item in result.get("balance_infos", [])]
+        return "\n".join([lead, *values])
 
     def _finished(self, job):
         self._jobs.discard(job)

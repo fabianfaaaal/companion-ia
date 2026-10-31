@@ -37,6 +37,9 @@ class Policy:
     The state file contains only the private-mode latch, never personal content.
     A caller must choose an OS user-data path outside docs/source repositories.
     Stop callbacks must release resources; failures leave admission closed.
+    PRIVATE permits only the explicit private.chat operation for a dedicated
+    local, volatile adapter. It does not authorize memory, sensors, ordinary
+    inference routes or remote access. The adapter must supply no saved context.
     """
 
     def __init__(self, state_path: Path | None = None) -> None:
@@ -107,6 +110,12 @@ class Policy:
             return Lease(self._owner, self._epoch, operation, restricted)
 
     def _authorize(self, operation: str, restricted: bool) -> None:
+        if operation == "private.chat":
+            # Intrinsic to PRIVATE only, never a reusable grant or intimate key.
+            # STOPPING/ERROR remain fully closed, including this exception.
+            if self._state is State.PRIVATE and restricted is False:
+                return
+            raise Denied("private chat requires confirmed PRIVATE without restricted access")
         if self._state is not State.ACTIVE:
             raise Denied("runtime is blocked")
         if operation not in self._grants:

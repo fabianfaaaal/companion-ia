@@ -9,3 +9,5 @@ Cambios pequeños por objetivo, ramas feat/, fix/ o docs/ y commits descriptivos
 Publicación inicial autorizada solo en fabianfaaaal/companion-ia público; avances de ese proyecto mediante ramas y pushes durante sesiones activas. Sin force-push ni operaciones destructivas.
 No aceptar contribuciones externas por ahora. No consumir servicios pagos sin autorización.
 Documentación de planificación interna se mantiene fuera del repositorio; este código y docs/ deben ser comprensibles por sí solos.
+
+C18: guardado automático de mensajes con memoria activa. PRIVATE permite solo private.chat local temporal; archivo/sensores/voz/externos bloqueados. No trasladar texto privado al reactivar. ERROR bloquea también chat. Dispositivo y Memoteca comparten núcleo/permisos; no crean otro asistente.

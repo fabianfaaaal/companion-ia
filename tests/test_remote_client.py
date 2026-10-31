@@ -31,7 +31,7 @@ class RemoteTests(unittest.TestCase):
             ("x-ratelimit-remaining-tokens", "500"), ("set-cookie", "secret")])
         with patch("companion.remote_client.http.client.HTTPSConnection", return_value=connection) as factory:
             result = RemoteClient("deepseek", "synthetic-key").complete("deepseek-flash", MESSAGES)
-        factory.assert_called_once_with("api.deepseek.com", timeout=4)
+        factory.assert_called_once_with("api.deepseek.com", timeout=10)
         args, kwargs = connection.request.call_args
         self.assertEqual(args, ("POST", "/chat/completions"))
         payload = json.loads(kwargs["body"])
@@ -59,7 +59,7 @@ class RemoteTests(unittest.TestCase):
 
     def test_auth_quota_rate_and_redirect_do_not_expose_payload(self):
         for status, expected in [(401, "auth"), (403, "auth"), (402, "quota"),
-                                 (429, "rate"), (503, "network"), (302, "protocol")]:
+                                 (429, "rate"), (503, "service"), (302, "protocol")]:
             connection = fake_connection({"error": {"message": "secret synthetic-key"}}, status=status)
             with patch("companion.remote_client.http.client.HTTPSConnection", return_value=connection):
                 with self.assertRaises(RemoteError) as error:
@@ -150,3 +150,34 @@ class RemoteTests(unittest.TestCase):
         self.assertTrue(result["truncated"])
         self.assertEqual(result["usage"], {})
         self.assertEqual(result["limits"], {})
+
+    def test_connection_close_response_does_not_touch_closed_socket_again(self):
+        import io
+        import http.client
+        payload=json.dumps(ANSWER).encode()
+        class Socket:
+            def makefile(self,*args):
+                return io.BytesIO(b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: "+str(len(payload)).encode()+b"\r\n\r\n"+payload)
+            def settimeout(self,value):
+                if response.isclosed():
+                    raise OSError(9,"synthetic closed socket")
+        sock=Socket()
+        response=http.client.HTTPResponse(sock);response.begin()
+        connection=MagicMock();connection.sock=sock
+        connection.getresponse.return_value=response
+        with patch("companion.remote_client.http.client.HTTPSConnection",return_value=connection):
+            result=RemoteClient("deepseek","synthetic-key").complete("deepseek-flash",MESSAGES)
+        self.assertEqual(result["answer"],"Hola.")
+
+    def test_network_failure_categories_never_echo_underlying_text(self):
+        import ssl,socket
+        for error,code in ((ssl.SSLCertVerificationError("SYNTHETIC-SECRET"),"tls"),
+                           (socket.gaierror(-2,"SYNTHETIC-SECRET"),"dns"),
+                           (TimeoutError("SYNTHETIC-SECRET"),"timeout"),
+                           (PermissionError(13,"SYNTHETIC-SECRET"),"blocked")):
+            connection=MagicMock();connection.connect.side_effect=error
+            with patch("companion.remote_client.http.client.HTTPSConnection",return_value=connection):
+                with self.assertRaises(RemoteError) as caught:
+                    RemoteClient("deepseek","synthetic-key").balance()
+            self.assertEqual(caught.exception.code,code)
+            self.assertNotIn("SYNTHETIC",str(caught.exception))

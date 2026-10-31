@@ -11,6 +11,7 @@ import http.client
 import json
 import re
 import socket
+import ssl
 import threading
 import time
 
@@ -38,6 +39,11 @@ _ERROR_MESSAGES = {
     "quota": "La cuenta no tiene saldo disponible para esta operación.",
     "rate": "El proveedor informó un límite de uso. Probá más tarde.",
     "network": "No se pudo completar la conexión con el proveedor.",
+    "tls": "No se pudo verificar el certificado seguro del proveedor. Revisá fecha/hora y certificados de Windows; no desactives la verificación.",
+    "dns": "Windows no pudo resolver la dirección del proveedor. Revisá Internet o DNS.",
+    "timeout": "El proveedor no respondió dentro del tiempo de espera. Probá nuevamente.",
+    "blocked": "Windows o un firewall bloqueó la conexión del programa con el proveedor.",
+    "service": "El proveedor informó un error de servicio. El respaldo local sigue disponible.",
     "protocol": "El proveedor o la configuración devolvió una respuesta incompatible.",
 }
 
@@ -107,7 +113,7 @@ class RemoteClient:
             self._check()
             deadline = time.monotonic() + 120
             host = ENDPOINTS[self.provider][0]
-            connection = http.client.HTTPSConnection(host, timeout=4)
+            connection = http.client.HTTPSConnection(host, timeout=10)
             self._connection = connection
             connection.connect()
             self._socket = connection.sock
@@ -132,7 +138,7 @@ class RemoteClient:
             if status == 429:
                 raise RemoteError("rate")
             if status >= 500:
-                raise RemoteError("network")
+                raise RemoteError("service")
             if status != 200:
                 raise RemoteError("protocol")
             limits = {}
@@ -156,6 +162,10 @@ class RemoteClient:
                 if size > MAX_RESPONSE:
                     raise RemoteError("protocol")
                 parts.append(chunk)
+                if response.isclosed() is True:
+                    if type(response.length) is int and response.length > 0:
+                        raise RemoteError("protocol")
+                    break
             data = json.loads(b"".join(parts))
             if not isinstance(data, dict):
                 raise RemoteError("protocol")
@@ -165,7 +175,19 @@ class RemoteClient:
         except RemoteError:
             self._check()
             raise
-        except (OSError, http.client.HTTPException):
+        except ssl.SSLError:
+            self._check()
+            raise RemoteError("tls") from None
+        except socket.gaierror:
+            self._check()
+            raise RemoteError("dns") from None
+        except TimeoutError:
+            self._check()
+            raise RemoteError("timeout") from None
+        except OSError as error:
+            self._check()
+            raise RemoteError("blocked" if getattr(error, "winerror", None) == 10013 or error.errno in (13, 10013) else "network") from None
+        except http.client.HTTPException:
             self._check()
             raise RemoteError("network") from None
         except (ValueError, TypeError, AttributeError, OverflowError):

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="390" viewBox="0 0 1200 390">
+<title>Companion IA — una compañera, tu mundo</title><desc>Ilustración conceptual vectorial de un dispositivo y conversación, no una captura del programa.</desc>
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#101c30"/><stop offset="1" stop-color="#1c1640"/></linearGradient><linearGradient id="accent" x2="1" y2="1"><stop stop-color="#75e4c2"/><stop offset="1" stop-color="#9b8bfa"/></linearGradient></defs>
+<rect width="1200" height="390" rx="28" fill="url(#bg)"/>
+<circle cx="1100" cy="40" r="180" fill="#75e4c2" opacity=".045"/><circle cx="920" cy="380" r="180" fill="#b494ff" opacity=".06"/>
+<g font-family="Segoe UI,Arial,sans-serif"><rect x="912" y="15" width="175" height="25" rx="12" fill="#75e4c2" opacity=".14"/><text x="933" y="33" fill="#a4f5d8" font-size="12">ALPHA WINDOWS</text><text x="65" y="90" fill="#75e4c2" font-size="17" letter-spacing="5">UN PROYECTO ABIERTO, HECHO PASO A PASO</text>
+<text x="60" y="172" fill="#f0f6ff" font-size="70" font-weight="700">Companion IA</text>
+<text x="65" y="223" fill="#d2ddef" font-size="27">Tu compañera. Tu contexto. Tus controles.</text>
+<text x="65" y="285" fill="#9bafc9" font-size="19">Conversá · Recordá lo que elijas · Explorá tus momentos</text>
+<rect x="64" y="315" width="150" height="34" rx="17" fill="#75e4c2" opacity=".14"/><text x="88" y="338" fill="#a4f5d8" font-size="15">Local primero</text>
+<rect x="227" y="315" width="154" height="34" rx="17" fill="#9b8bfa" opacity=".16"/><text x="249" y="338" fill="#d4c9ff" font-size="15">Código abierto</text>
+<text x="990" y="371" fill="#9bafc9" font-size="11">ILUSTRACIÓN CONCEPTUAL</text></g>
+<g transform="translate(855 48)"><rect x="20" y="0" width="220" height="292" rx="38" fill="#080f1b" stroke="url(#accent)" stroke-width="3"/>
+<rect x="37" y="16" width="186" height="258" rx="27" fill="#17263a"/>
+<circle cx="130" cy="106" r="56" fill="#203f4b"/><path d="M96 98 q12 -20 24 0 M142 98 q12 -20 24 0" fill="none" stroke="#9df4d7" stroke-width="6" stroke-linecap="round"/><path d="M108 119 q23 26 45 0" fill="none" stroke="#9df4d7" stroke-width="5" stroke-linecap="round"/>
+<rect x="64" y="184" width="132" height="32" rx="16" fill="#75e4c2"/><rect x="78" y="231" width="104" height="8" rx="4" fill="#7288a4"/>
+<path d="m-42 20 6 13 14 2-10 10 2 14-12-7-13 7 3-14-11-10 15-2z" fill="#75e4c2"/>
+<path d="m263 194 4 9 10 1-7 7 1 10-8-5-9 5 2-10-8-7 11-1z" fill="#ae9dff"/>
+</g></svg>
