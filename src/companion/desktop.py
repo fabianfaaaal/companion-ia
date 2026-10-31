@@ -8,10 +8,10 @@ import threading
 import time
 from pathlib import Path
 
-from PySide6.QtCore import QLockFile, QStandardPaths, QThread, QTimer, QUrl, Signal
+from PySide6.QtCore import QLockFile, QStandardPaths, QThread, QTimer, QUrl, Signal, Qt
 from PySide6.QtGui import QDesktopServices, QFont, QFontDatabase
 from PySide6.QtWidgets import (
-    QApplication, QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
+    QApplication, QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QTabWidget,
     QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget,
 )
 from companion.ollama_client import Cancelled, ClientError, OllamaClient
@@ -20,7 +20,12 @@ from companion.session import build_messages, final_answer, capabilities, direct
 from companion.memory_panel import MemoryPanel
 from companion.memory_store import MemoryStoreError
 from companion.voice_panel import VoicePanel
-from companion.audio_io import AudioError
+from companion.audio_io import AudioError, AudioIO
+from companion.agenda_panel import AgendaPanel
+from companion.cinematheque_panel import CinemathequePanel
+from companion.environment_panel import EnvironmentPanel
+from companion.web_panel import WebPanel
+from companion.session import requested_tool
 
 STYLE = """
 QWidget { background:#101825; color:#e6edf5; font-family:'Segoe UI'; font-size:14px; }
@@ -186,10 +191,79 @@ class Window(QMainWindow):
         foot.setObjectName("muted")
         footer.addWidget(foot, 1)
         layout.addLayout(footer)
+        self.takeCentralWidget()
+        self.tabs = QTabWidget()
+        self.tabs.addTab(root, "Conversación")
+        db_path = state_path.parent / "memory.sqlite"
+        self.agenda_panel = AgendaPanel(self.policy, db_path, self)
+        self.cinematheque = CinemathequePanel(self.policy, db_path, self)
+        self.web_panel = WebPanel(self.policy, self)
+        self.environment = EnvironmentPanel(self.policy, self)
+        for panel, label in ((self.agenda_panel, "Agenda"), (self.cinematheque, "Cinemateca"),
+                             (self.web_panel, "Web"), (self.environment, "Entorno")):
+            self.tabs.addTab(panel, label)
+            panel.notice.connect(self.status.setText)
+        self.agenda_panel.alert.connect(self._agenda_alert, Qt.ConnectionType.QueuedConnection)
+        self.cinematheque.changed.connect(self._discard_derived_context)
+        self.environment.changed.connect(self._discard_derived_context)
+        self.alarm_audio = AudioIO(self.policy, playback_operation="alarm.playback")
+        self.setCentralWidget(self.tabs)
+        toolbar = self.addToolBar("Controles globales")
+        toolbar.setMovable(False)
+        self.global_privacy = QPushButton("Modo privado")
+        self.global_privacy.clicked.connect(self.toggle_private)
+        toolbar.addWidget(self.global_privacy)
+        self.global_audio = QPushButton("Detener audio")
+        self.global_audio.clicked.connect(self._stop_audio)
+        toolbar.addWidget(self.global_audio)
+        self.audio_indicator = QLabel()
+        toolbar.addWidget(self.audio_indicator)
+        self.audio_timer = QTimer(self)
+        self.audio_timer.setInterval(250)
+        self.audio_timer.timeout.connect(self._audio_status)
+        self.audio_timer.start()
+        self.global_status = QLabel("  Agenda y fotos requieren memoria; web y entorno tienen autorización propia.")
+        toolbar.addWidget(self.global_status)
         self.models.currentTextChanged.connect(self._model_changed)
         self._refresh()
         if auto_connect and self.policy.state is State.ACTIVE:
             QTimer.singleShot(200, self.detect_models)
+
+    def _audio_status(self):
+        recording = self.voice_panel.audio.recording
+        playing = self.voice_panel.audio.playing or self.alarm_audio.playing
+        self.audio_indicator.setText("  Micrófono grabando  " if recording else ("  Audio reproduciéndose  " if playing else "  Micrófono inactivo  "))
+
+    def _stop_audio(self):
+        try:
+            self.voice_panel.stop_and_wait()
+            self.alarm_audio.cancel()
+        except (RuntimeError, AudioError):
+            self.status.setText("No se pudo confirmar el cierre del audio. Activá privado para bloquear la sesión.")
+
+    def _discard_derived_context(self):
+        self._cancel_worker()
+        self.voice_panel.stop()
+        self.history.clear()
+        self.last_messages.clear()
+        self._last_sources.clear()
+        self.transcript.clear()
+        self._refresh()
+
+    def _agenda_alert(self, item):
+        if self.policy.state is not State.ACTIVE or not self.memory_panel.enabled or not self.agenda_panel.toggle.isChecked():
+            return
+        self.tabs.setCurrentWidget(self.agenda_panel)
+        self.global_status.setText("  Tenés un aviso pendiente en Agenda")
+        if item.get("sound"):
+            try:
+                import numpy as np
+                self.policy.grant("alarm.playback")
+                rate = 16000
+                samples = (0.12 * np.sin(2 * np.pi * 660 * np.arange(rate // 2) / rate)).astype("float32")
+                self.alarm_audio.play_samples(samples, rate)
+            except (Denied, AudioError):
+                self.status.setText("Aviso visible; no se pudo reproducir el sonido.")
 
     def _dictated(self, text):
         if self.policy.state is State.ACTIVE:
@@ -199,13 +273,14 @@ class Window(QMainWindow):
     def _memory_changed(self, enabled):
         self._cancel_worker()
         self.voice_panel.stop()
+        self.alarm_audio.cancel()
         self.history.clear()
         self.last_messages.clear()
         self._last_sources.clear()
         self._pending_user = ""
         self.transcript.clear()
         self.input.clear()
-        self.session_note.setText("Notas manuales habilitadas · Chat temporal · Sin sensores ambientales" if enabled
+        self.session_note.setText("Memoria local habilitada · Chat temporal · Entorno con permiso separado" if enabled
                                   else "Memoria apagada · Chat temporal · Micrófono solo al pulsar Dictar")
         self.status.setText("Memoria de notas habilitada. Usá Guardar nota." if enabled else "Memoria desactivada. Las notas existentes se conservan, pero no se recuperan.")
         self._refresh()
@@ -223,6 +298,13 @@ class Window(QMainWindow):
         for widget in (self.name, self.mode, self.models, self.connect_button, self.fresh):
             widget.setEnabled(active and not busy)
         self.memory_panel.refresh(busy)
+        self.agenda_panel.refresh(self.memory_panel.enabled, busy)
+        self.cinematheque.refresh(self.memory_panel.enabled, busy)
+        self.web_panel.refresh(active, busy)
+        self.environment.refresh(active)
+        self.global_privacy.setText("Reactivar" if self.policy.state is State.PRIVATE else "Modo privado")
+        self.global_privacy.setEnabled(self.policy.state in (State.ACTIVE, State.PRIVATE))
+        self.global_status.setText("  Modo privado activo" if not active else "  Herramientas disponibles en las pestañas")
         self.voice_panel.refresh()
         self.input.setEnabled(active and not busy)
         self.send.setEnabled(active and not busy and self.models.count() > 0)
@@ -271,6 +353,17 @@ class Window(QMainWindow):
         if not text or len(text) > 4000:
             self.status.setText("Escribí entre 1 y 4000 caracteres.")
             return
+        tool = requested_tool(text)
+        if tool == "agenda":
+            self.tabs.setCurrentWidget(self.agenda_panel)
+            self.agenda_panel.draft_text = text
+        elif tool == "web":
+            self.tabs.setCurrentWidget(self.web_panel)
+            self.web_panel.request_search(text)
+        elif tool == "cinema":
+            self.tabs.setCurrentWidget(self.cinematheque)
+        elif tool == "environment":
+            self.tabs.setCurrentWidget(self.environment)
         reply = direct_reply(text, memory_enabled=self.memory_panel.enabled)
         if reply is not None:
             self.input.clear()
@@ -284,9 +377,10 @@ class Window(QMainWindow):
             self._refresh()
             return
         try:
-            self._last_sources = self.memory_panel.retrieve(text)
+            self._last_sources = self.memory_panel.retrieve(text) + self.cinematheque.retrieve(text)
+            temporary_context = self.web_panel.context() + self.environment.context()
             messages = build_messages(self.history, text, self.name.text(), self.mode.currentText(),
-                memories=self._last_sources, memory_enabled=self.memory_panel.enabled)
+                memories=self._last_sources, memory_enabled=self.memory_panel.enabled, extra_context=temporary_context)
         except (ValueError, MemoryStoreError, Denied) as exc:
             self.status.setText(str(exc))
             return
@@ -366,6 +460,12 @@ class Window(QMainWindow):
     def _stop_for_private(self):
         self._cancel_worker()
         self.voice_panel.deactivate()
+        self.web_panel.stop()
+        self.environment.stop()
+        self.agenda_panel.stop()
+        self.cinematheque.stop()
+        self.alarm_audio.cancel()
+        self.policy.revoke("alarm.playback")
         for operation in ("microphone.capture", "microphone.devices", "speech.transcribe", "speech.synthesize", "audio.playback"):
             self.policy.revoke(operation)
         if self._worker is not None and not self._worker.wait(5000):
@@ -381,6 +481,7 @@ class Window(QMainWindow):
         if self._worker is not None:
             return
         self.voice_panel.stop()
+        self.alarm_audio.cancel()
         self.history.clear()
         self.last_messages.clear()
         self._last_sources.clear()
@@ -437,6 +538,11 @@ class Window(QMainWindow):
         self._cancel_worker()
         try:
             self.voice_panel.stop_and_wait()
+            self.web_panel.stop()
+            self.environment.stop()
+            self.agenda_panel.stop()
+            self.cinematheque.stop()
+            self.alarm_audio.cancel()
         except (RuntimeError, AudioError):
             self.status.setText("Esperando cierre del audio. Probá cerrar de nuevo.")
             event.ignore()
@@ -454,11 +560,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--memory-self-test", action="store_true")
+    parser.add_argument("--tools-self-test", action="store_true")
     parser.add_argument("--engine-self-test", action="store_true")
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument("--screenshot", type=Path)
     args = parser.parse_args(argv)
-    if (args.memory_self_test or args.engine_self_test) and not (args.smoke_test and args.state_dir):
+    if (args.memory_self_test or args.engine_self_test or args.tools_self_test) and not (args.smoke_test and args.state_dir):
         parser.error("Self-tests require --smoke-test and an explicit temporary --state-dir")
     app = QApplication([sys.argv[0]])
     app.setApplicationName("CompanionIA")
@@ -491,6 +598,21 @@ def main(argv=None):
             assert panel.store.search("apricot")[0]["id"] == saved["id"]
             assert panel.store.delete_note(saved["id"])
             assert panel.store.search("apricot") == []
+            panel.set_enabled(False)
+        if args.tools_self_test:
+            from datetime import datetime, timedelta, timezone
+            from PIL import Image
+            panel = window.memory_panel
+            panel.set_enabled(True)
+            item = window.agenda_panel.store.add("Synthetic alarm", "packaging", datetime.now(timezone.utc) + timedelta(seconds=60))
+            assert window.agenda_panel.store.cancel(item["id"])
+            fixture = data_dir / "synthetic.png"
+            Image.new("RGB", (32, 32), "teal").save(fixture)
+            moment = window.cinematheque.store.import_photo(fixture, "Synthetic apricot", "packaging")
+            assert window.cinematheque.store.search("apricot")
+            window.cinematheque.reload()
+            assert window.cinematheque.store.delete_moment(moment["id"])
+            fixture.unlink()
             panel.set_enabled(False)
         if args.engine_self_test:
             if not window.voice_panel.ready:

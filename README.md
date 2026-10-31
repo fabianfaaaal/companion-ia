@@ -6,7 +6,7 @@ Companion IA es un proyecto gratuito y de código abierto que explora cómo cons
 
 Queremos que puedas conversar con una compañera o mascota con personalidad propia, compartir lo que elijas y, si habilitás la memoria, volver a esos momentos desde una **Cinemateca de Recuerdos**.
 
-> **Estado: prototipo de escritorio en desarrollo temprano.** Primera ventana Windows con chat Ollama y modo privado. Paquete ejecutable portable para pruebas; todavía sin instalador completo, memoria autobiográfica ni Cinemateca.
+> **Estado: prototipo de escritorio en desarrollo temprano.** Ventana Windows con chat Ollama, notas, voz opcional, agenda, Cinemateca inicial de fotos y controles de web y entorno. Paquete portable para pruebas; todavía sin instalador completo ni archivo íntimo cifrado.
 
 ## Qué queremos demostrar
 
@@ -36,23 +36,26 @@ Estas funciones son objetivos del producto; la tabla de estado más abajo distin
 | Componente | Estado |
 | --- | --- |
 | Núcleo de autorización y revocación de permisos | Implementado y probado con acciones ficticias |
-| Memoria deshabilitada por defecto en la política | Implementado; todavía sin almacén de recuerdos |
+| Memoria deshabilitada por defecto en la política | Implementado; archivo local de notas, agenda y fotos opcional |
 | Modo privado y rechazo de resultados tardíos | Implementado al nivel del núcleo |
 | Persistencia del estado privado | Probada cuando se configura una ruta de estado |
 | Control básico de acceso restringido | Implementado; autenticación local pendiente |
-| Pruebas automatizadas | 95 casos locales aprobados (políticas, transporte, notas, audio, motores e interfaz) |
+| Pruebas automatizadas | 112 casos locales aprobados (políticas, transporte, notas, audio, motores e interfaz) |
 | Chat, interfaz y conexión Ollama | Prototipo Windows verificado con saludo sintético; aceptación del usuario pendiente |
 | Notas manuales, búsqueda y recuperación | Integradas con memoria opcional; conversación sigue temporal |
 | Voz y dictado | Preview local: lectura de respuesta final y dictado revisable por botón |
-| Fichas, recuerdos multimedia, fotos y Cinemateca | Pendientes |
-| Cifrado del archivo íntimo, agenda y sensores | Pendientes |
+| Fotos y Cinemateca inicial | Importación manual, miniaturas, notas y búsqueda textual; sin análisis visual |
+| Calendario, recordatorios y alarmas | Avisos dentro de la app, con memoria y avisos activos; sonido opt-in |
+| Búsqueda web | Bing/Wikipedia con autorización por consulta, fragmentos y enlaces |
+| Contexto ambiental inicial | Estado autoinformado y título de ventana autorizado en Windows, solo RAM |
+| Archivo íntimo cifrado, cámara y escucha permanente | Pendientes |
 | Android, distribución Linux e instaladores | Pendientes |
 
 Las pruebas usan datos sintéticos. Se comprobó un recorrido real de ventana y modelo local, además de controles automatizados; no constituye una auditoría de seguridad ni aceptación de experiencia. El archivo íntimo con datos reales requiere protección de contenido y claves antes de habilitarse.
 
 ## Probar notas y voz
 
-Ver [guía del preview de notas y voz](docs/voice-notes-preview.md). Guardar una nota no programa recordatorios. El audio requiere permisos propios; el motor neural opcional y sus modelos se preparan fuera del repositorio.
+Ver [herramientas integradas](docs/integrated-tools-preview.md) y [notas y voz](docs/voice-notes-preview.md). Guardar una nota no programa recordatorios. El audio requiere permisos propios; el motor neural opcional y sus modelos se preparan fuera del repositorio.
 
 ## Desarrollo asistido por IA
 
@@ -83,7 +86,7 @@ El diseño adoptado parte de un núcleo modular y una aplicación de escritorio.
 | Núcleo | Python 3.12+ | Base actual |
 | Escritorio | PySide6 / Qt Widgets | Primera ventana implementada; Qt Quick sigue como opción posterior |
 | Modelo local | Ollama mediante adaptador | Integrado en prueba con modelos locales verificados |
-| Memoria y búsqueda | SQLite / FTS5 | Adoptado, sin integrar |
+| Memoria y búsqueda | SQLite / FTS5 | Integrado para notas, agenda y fotos |
 | Cliente Android | Kotlin / Jetpack Compose | Planificado |
 
 Windows es la primera plataforma. Android será una extensión de la PC, que conservará la autoridad del archivo; Linux tendrá su propia validación y empaquetado. La portabilidad prevista no equivale a compatibilidad ya probada.
@@ -93,9 +96,12 @@ Estructura actual:
 ```text
 companion-ia/
 ├── src/companion/
-│   └── policy.py
+│   ├── policy.py
+│   ├── desktop.py
+│   └── ...
 ├── tests/
-│   └── test_policy.py
+│   ├── test_policy.py
+│   └── ...
 ├── AGENTS.md
 ├── LICENSE
 ├── README.md
@@ -112,7 +118,7 @@ Desde la raíz del repositorio:
 python -B -m unittest discover -s tests -v
 ```
 
-Estas pruebas usan la biblioteca estándar; no requieren Ollama, GPU ni dependencias de interfaz. Los casos de persistencia crean estado técnico ficticio en directorios temporales.
+Las pruebas básicas usan la biblioteca estándar; las de interfaz y fotos requieren requirements-desktop.txt. No requieren Ollama ni GPU. Los casos de persistencia crean estado técnico ficticio en directorios temporales.
 
 Este comando ejecuta pruebas. Para abrir o construir la ventana ver [prototipo de escritorio](docs/desktop-prototype.md). Instalar requirements-desktop.txt para incluir las pruebas de interfaz; sin Qt se omiten esas pruebas.
 
