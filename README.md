@@ -40,7 +40,7 @@ Estas funciones son objetivos del producto; la tabla de estado más abajo distin
 | Modo privado y rechazo de resultados tardíos | Implementado al nivel del núcleo |
 | Persistencia del estado privado | Probada cuando se configura una ruta de estado |
 | Control básico de acceso restringido | Implementado; autenticación local pendiente |
-| Pruebas automatizadas | 112 casos locales aprobados (políticas, transporte, notas, audio, motores e interfaz) |
+| Pruebas automatizadas | 118 casos locales aprobados (políticas, transporte, notas, audio, motores e interfaz) |
 | Chat, interfaz y conexión Ollama | Prototipo Windows verificado con saludo sintético; aceptación del usuario pendiente |
 | Notas manuales, búsqueda y recuperación | Integradas con memoria opcional; conversación sigue temporal |
 | Voz y dictado | Preview local: lectura de respuesta final y dictado revisable por botón |

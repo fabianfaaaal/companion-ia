@@ -46,6 +46,32 @@ QPushButton#private { border-color:#dfb26a; color:#ffd99e; }
 """
 
 
+def format_response_time(seconds: float) -> str:
+    milliseconds = max(0, round(seconds * 1000))
+    if milliseconds < 1000:
+        return f"{milliseconds} ms"
+    if milliseconds < 60000:
+        return f"{milliseconds / 1000:.2f} s"
+    total_seconds = milliseconds // 1000
+    minutes, seconds = divmod(total_seconds, 60)
+    if minutes < 60:
+        return f"{minutes} min {seconds:02d} s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours} h {minutes:02d} min {seconds:02d} s"
+
+
+class MessageInput(QTextEdit):
+    submit = Signal()
+
+    def keyPressEvent(self, event):
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not (event.modifiers() & Qt.KeyboardModifier.ShiftModifier):
+            if not event.isAutoRepeat():
+                self.submit.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+
 class Worker(QThread):
     result = Signal(int, object)
     failure = Signal(int, str)
@@ -99,6 +125,7 @@ class Window(QMainWindow):
         self._job = 0
         self._lease = None
         self._pending_user = ""
+        self._response_started = None
         self._thinking = {}
         self._last_sources = []
         if self.policy.state is State.ACTIVE:
@@ -155,15 +182,17 @@ class Window(QMainWindow):
         self.transcript.setAccessibleName("Conversación de esta sesión")
         self.transcript.setPlaceholderText("Tu conversación aparecerá acá. No se guarda en el disco.")
         layout.addWidget(self.transcript, 1)
-        self.input = QTextEdit()
+        self.input = MessageInput()
+        self.input.setAcceptRichText(False)
         self.input.setMaximumHeight(105)
         self.input.setAccessibleName("Mensaje")
-        self.input.setPlaceholderText("Escribí tu mensaje y pulsá Enviar…")
+        self.input.setPlaceholderText("Enter para enviar · Shift+Enter para una nueva línea…")
         layout.addWidget(self.input)
         buttons = QHBoxLayout()
         self.send = QPushButton("Enviar")
         self.send.setObjectName("send")
         self.send.clicked.connect(self.send_message)
+        self.input.submit.connect(lambda: self.send_message() if self.send.isEnabled() else None)
         self.stop = QPushButton("Detener")
         self.stop.clicked.connect(self.cancel_response)
         self.fresh = QPushButton("Nueva conversación")
@@ -176,6 +205,10 @@ class Window(QMainWindow):
         for button in (self.send, self.stop, self.fresh, self.inspector, self.privacy):
             buttons.addWidget(button)
         layout.addLayout(buttons)
+        self.response_time = QLabel("Respuesta: —")
+        self.response_time.setObjectName("muted")
+        self.response_time.setToolTip("Tiempo desde Enviar hasta insertar la respuesta completa en el chat. No incluye síntesis ni reproducción de voz.")
+        layout.addWidget(self.response_time)
         self.metrics = QLabel("Los tiempos de esta sesión aparecerán después de una respuesta.")
         self.metrics.setObjectName("muted")
         self.metrics.setWordWrap(True)
@@ -228,6 +261,11 @@ class Window(QMainWindow):
         self._refresh()
         if auto_connect and self.policy.state is State.ACTIVE:
             QTimer.singleShot(200, self.detect_models)
+
+    def _show_response_time(self):
+        if self._response_started is not None:
+            self.response_time.setText("Respuesta: " + format_response_time(time.perf_counter() - self._response_started))
+            self._response_started = None
 
     def _audio_status(self):
         recording = self.voice_panel.audio.recording
@@ -353,6 +391,8 @@ class Window(QMainWindow):
         if not text or len(text) > 4000:
             self.status.setText("Escribí entre 1 y 4000 caracteres.")
             return
+        self._response_started = time.perf_counter()
+        self.response_time.setText("Respuesta: esperando…")
         tool = requested_tool(text)
         if tool == "agenda":
             self.tabs.setCurrentWidget(self.agenda_panel)
@@ -372,6 +412,7 @@ class Window(QMainWindow):
             self.history.extend([{"role": "user", "content": text}, {"role": "assistant", "content": reply}])
             self.history = self.history[-12:]
             self.last_messages.clear()
+            self._show_response_time()
             self.voice_panel.speak(reply)
             self.status.setText("Información del programa. No se creó ningún aviso ni se realizó una búsqueda web.")
             self._refresh()
@@ -382,6 +423,8 @@ class Window(QMainWindow):
             messages = build_messages(self.history, text, self.name.text(), self.mode.currentText(),
                 memories=self._last_sources, memory_enabled=self.memory_panel.enabled, extra_context=temporary_context)
         except (ValueError, MemoryStoreError, Denied) as exc:
+            self._response_started = None
+            self.response_time.setText("Respuesta: no enviada")
             self.status.setText(str(exc))
             return
         self.last_messages = messages
@@ -425,6 +468,7 @@ class Window(QMainWindow):
                              {"role": "assistant", "content": answer}])
         self.history = self.history[-12:]
         self._append((self.name.text().strip() or "Amiga") + "\n" + answer + "\n")
+        self._show_response_time()
         m = result["metrics"]
         rate = m.get("eval_count", 0) / (m["eval_duration"] / 1e9) if m.get("eval_duration") else None
         first = result.get("first")
@@ -441,7 +485,12 @@ class Window(QMainWindow):
         if job != self._job or self._lease is None:
             return
         try:
-            self.policy.publish(self._lease, lambda: self.status.setText(message))
+            def show_failure():
+                self.status.setText(message)
+                if self._response_started is not None:
+                    self._response_started = None
+                    self.response_time.setText("Respuesta: falló")
+            self.policy.publish(self._lease, show_failure)
         except Denied:
             pass
 
@@ -452,6 +501,9 @@ class Window(QMainWindow):
         self._refresh()
 
     def _cancel_worker(self):
+        if self._response_started is not None:
+            self._response_started = None
+            self.response_time.setText("Respuesta: cancelada")
         self._job += 1
         self._lease = None
         if self._worker is not None:
@@ -489,6 +541,7 @@ class Window(QMainWindow):
         self.transcript.clear()
         self.input.clear()
         self.metrics.setText("Nueva sesión: todavía sin mediciones.")
+        self.response_time.setText("Respuesta: —")
         self._refresh()
 
     def toggle_private(self):
@@ -506,6 +559,7 @@ class Window(QMainWindow):
             self.models.clear()
             self._thinking.clear()
             self.metrics.setText("Contenido de sesión borrado al activar privado.")
+            self.response_time.setText("Respuesta: —")
         elif self.policy.state is State.PRIVATE:
             try:
                 self.policy.resume(local_action=True)

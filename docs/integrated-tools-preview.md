@@ -30,3 +30,8 @@ Construir en Windows con python scripts/build_windows.py --variant tools-preview
 El paquete incluye Pillow para validar fotos y generar miniaturas.
 Los autochequeos --smoke-test --memory-self-test --tools-self-test requieren --state-dir temporal explícito y usan datos sintéticos.
 Pruebas automáticas no equivalen a aceptación manual de sonido, micrófono o experiencia.
+
+## Escritura y tiempo de respuesta
+Enter envía el mensaje; Shift+Enter inserta una nueva línea. El teclado numérico también permite enviar.
+El indicador Respuesta mide desde el envío hasta insertar la respuesta completa en el chat, incluyendo preparación y espera del modelo; no incluye voz. Cambia de ms a segundos, minutos u horas según duración. Cancelaciones y errores se muestran sin inventar una duración exitosa.
+El paquete interaction-preview contiene estos cambios y conserva el tools-preview anterior.
