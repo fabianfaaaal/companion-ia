@@ -27,6 +27,11 @@ from companion.environment_panel import EnvironmentPanel
 from companion.web_panel import WebPanel
 from companion.session import requested_tool
 from companion.preferences import Preferences
+from companion.provider_panel import ProviderPanel
+from companion.personality_panel import PersonalityPanel
+from companion.history_panel import HistoryPanel
+from companion.interaction_worker import InteractionWorker
+from companion.orchestration import resolve_depth
 
 STYLE = """
 QWidget { background:#101825; color:#e6edf5; font-family:'Segoe UI'; font-size:14px; }
@@ -126,6 +131,9 @@ class Window(QMainWindow):
         self._job = 0
         self._lease = None
         self._pending_user = ""
+        self._pending_route = None
+        self._pending_remote_messages = []
+        self._pending_depth = "brief"
         self._response_started = None
         self._preferences = Preferences(state_path.parent / "preferences.json")
         self._preference_values = None
@@ -239,13 +247,22 @@ class Window(QMainWindow):
         self.cinematheque = CinemathequePanel(self.policy, db_path, self)
         self.web_panel = WebPanel(self.policy, self)
         self.environment = EnvironmentPanel(self.policy, self)
+        self.provider_panel = ProviderPanel(self.policy, state_path.parent, self)
+        self.personality = PersonalityPanel(self.policy, state_path.parent, self)
+        self.histories = HistoryPanel(self.policy, db_path, self)
+        self.name.setText(self.personality.context().get("name", "Amiga"))
         for panel, label in ((self.agenda_panel, "Agenda"), (self.cinematheque, "Cinemateca"),
-                             (self.web_panel, "Web"), (self.environment, "Entorno")):
+                             (self.web_panel, "Web"), (self.environment, "Entorno"),
+                             (self.provider_panel, "Proveedores"), (self.personality, "Personalidad"),
+                             (self.histories, "Historiales")):
             self.tabs.addTab(panel, label)
             panel.notice.connect(self.status.setText)
         self.agenda_panel.alert.connect(self._agenda_alert, Qt.ConnectionType.QueuedConnection)
         self.cinematheque.changed.connect(self._discard_derived_context)
         self.environment.changed.connect(self._discard_derived_context)
+        self.provider_panel.changed.connect(self._discard_derived_context)
+        self.histories.changed.connect(self._discard_derived_context)
+        self.personality.applied.connect(self._personality_applied)
         self.alarm_audio = AudioIO(self.policy, playback_operation="alarm.playback")
         self.setCentralWidget(self.tabs)
         toolbar = self.addToolBar("Controles globales")
@@ -329,6 +346,27 @@ class Window(QMainWindow):
         except (RuntimeError, AudioError):
             self.status.setText("No se pudo confirmar el cierre del audio. Activá privado para bloquear la sesión.")
 
+    def _personality_applied(self, values):
+        self.name.setText(values["name"])
+        self._discard_derived_context()
+
+    def _worker_stage(self, job, message):
+        if job != self._job or self._lease is None:
+            return
+        try:
+            self.policy.publish(self._lease, lambda: self.status.setText(message))
+        except Denied:
+            pass
+
+    def _worker_snapshot(self, job, messages):
+        if job != self._job or self._lease is None:
+            return
+        try:
+            self.policy.publish(self._lease, lambda: setattr(self, "last_messages", [dict(item) for item in messages]))
+            self.inspector.setEnabled(True)
+        except Denied:
+            pass
+
     def _discard_derived_context(self):
         self._cancel_worker()
         self.voice_panel.stop()
@@ -390,14 +428,17 @@ class Window(QMainWindow):
         self.cinematheque.refresh(self.memory_panel.enabled, busy)
         self.web_panel.refresh(active, busy)
         self.environment.refresh(active)
+        self.provider_panel.refresh(active, busy)
+        self.personality.refresh(active, busy)
+        self.histories.refresh(self.memory_panel.enabled, busy)
         self.global_privacy.setText("Reactivar" if self.policy.state is State.PRIVATE else "Modo privado")
         self.global_privacy.setEnabled(self.policy.state in (State.ACTIVE, State.PRIVATE))
         self.global_status.setText("  Modo privado activo" if not active else "  Herramientas disponibles en las pestañas")
         self.voice_panel.refresh()
         self.input.setEnabled(active and not busy)
-        self.send.setEnabled(active and not busy and self.models.count() > 0)
+        self.send.setEnabled(active and not busy and (self.models.count() > 0 or self.provider_panel.account.currentData() is not None))
         self.stop.setEnabled(active and busy)
-        self.inspector.setEnabled(active and not busy and bool(self.last_messages))
+        self.inspector.setEnabled(active and bool(self.last_messages))
         self.privacy.setText("Reactivar" if self.policy.state is State.PRIVATE else "Modo privado")
         self.privacy.setEnabled(self.policy.state in (State.ACTIVE, State.PRIVATE))
         if self.policy.state is State.PRIVATE:
@@ -413,7 +454,19 @@ class Window(QMainWindow):
         except Denied:
             return
         self._job += 1
-        worker = Worker(self._job, kind, self.models.currentText(), messages)
+        if kind == "chat":
+            route = self._pending_route
+            remote_lease = None
+            if route and route.get("allowed") and not route.get("error"):
+                self.policy.grant("remote.request")
+                remote_lease = self.policy.begin("remote.request")
+            worker = InteractionWorker(self._job, self.models.currentText(), messages,
+                self._pending_remote_messages, route, self._pending_depth, self.mode.currentText(),
+                self.policy, lease, remote_lease)
+            worker.stage.connect(self._worker_stage)
+            worker.snapshot.connect(self._worker_snapshot)
+        else:
+            worker = Worker(self._job, kind, self.models.currentText(), messages)
         self._lease = lease
         self._worker = worker
         worker.result.connect(self._result)
@@ -468,16 +521,34 @@ class Window(QMainWindow):
             self._refresh()
             return
         try:
-            self._last_sources = self.memory_panel.retrieve(text) + self.cinematheque.retrieve(text)
+            notes = self.memory_panel.retrieve(text)
+            photos = self.cinematheque.retrieve(text)
+            imports = self.histories.retrieve(text)
+            def distribute(groups):
+                return [group[index] for index in range(3) for group in groups if index < len(group)]
+            self._last_sources = distribute([notes, photos, imports])
             temporary_context = self.web_panel.context() + self.environment.context()
+            self._pending_depth = resolve_depth(text, self.provider_panel.depth.currentText())
+            personality = self.personality.context()
             messages = build_messages(self.history, text, self.name.text(), self.mode.currentText(),
-                memories=self._last_sources, memory_enabled=self.memory_panel.enabled, extra_context=temporary_context)
+                memories=self._last_sources, memory_enabled=self.memory_panel.enabled,
+                extra_context=temporary_context, personality=personality, depth=self._pending_depth)
+            self._pending_route = self.provider_panel.request()
+            outbound_memories = distribute([
+                notes + photos if self.provider_panel.share_memory.isChecked() else [],
+                imports if self.provider_panel.share_imports.isChecked() else []])
+            self._pending_remote_messages = build_messages(
+                self.history if self.provider_panel.share_history.isChecked() else [],
+                text, self.name.text(), self.mode.currentText(),
+                memories=outbound_memories, memory_enabled=self.memory_panel.enabled,
+                extra_context=temporary_context if self.provider_panel.share_environment.isChecked() else [],
+                personality=personality, depth=self._pending_depth)
         except (ValueError, MemoryStoreError, Denied) as exc:
             self._response_started = None
             self.response_time.setText("Respuesta: no enviada")
             self.status.setText(str(exc))
             return
-        self.last_messages = messages
+        self.last_messages = self._pending_remote_messages if self._pending_route and self._pending_route.get("allowed") else messages
         self._pending_user = text
         self.input.clear()
         self._append("Vos\n" + text + "\n")
@@ -514,6 +585,15 @@ class Window(QMainWindow):
                 self._model_changed()
             return
         answer = result["answer"]
+        if result.get("request_messages"):
+            self.last_messages = result["request_messages"]
+        if result.get("provider"):
+            self._append("Motor · " + result["provider"] + (" · " + result["account"] if result.get("account") else ""))
+        if result.get("fallback_reason"):
+            self._append("Aviso del programa · " + result["fallback_reason"] + " Se usó Ollama local; puede tener menos capacidad.")
+        if result.get("truncated"):
+            self._append("Aviso del programa · El proveedor recortó la respuesta por el límite de salida.")
+        self.provider_panel.show_usage(result)
         self.history.extend([{"role": "user", "content": self._pending_user},
                              {"role": "assistant", "content": answer}])
         self.history = self.history[-12:]
@@ -529,7 +609,8 @@ class Window(QMainWindow):
             summary += f" · Generación: {rate:.1f} tokens/s"
         self.metrics.setText(summary + " · Medición puntual, no benchmark")
         suffix = f" · Notas recuperadas: {len(self._last_sources)}" if self._last_sources else ""
-        self.status.setText("Respuesta lista. El chat sigue siendo temporal." + suffix)
+        route_note = " Respaldo local usado por un problema con la API." if result.get("fallback_reason") else ""
+        self.status.setText("Respuesta lista · " + result.get("provider", "Ollama local") + ". El chat sigue temporal." + suffix + route_note)
 
     def _failure(self, job, message):
         if job != self._job or self._lease is None:
@@ -562,11 +643,19 @@ class Window(QMainWindow):
         self._lease = None
         if self._worker is not None:
             self._worker.cancel()
+        if self._pending_route is not None:
+            self._pending_route["key"] = ""
+        self._pending_route = None
+        self._pending_remote_messages.clear()
+        self.policy.revoke("remote.request")
 
     def _stop_for_private(self):
         self._cancel_worker()
         self.voice_panel.deactivate()
         self.web_panel.stop()
+        self.provider_panel.stop()
+        self.personality.stop()
+        self.histories.stop()
         self.environment.stop()
         self.agenda_panel.stop()
         self.cinematheque.stop()
@@ -592,6 +681,8 @@ class Window(QMainWindow):
         self.last_messages.clear()
         self._last_sources.clear()
         self._pending_user = ""
+        self._pending_remote_messages.clear()
+        self._pending_route = None
         self.transcript.clear()
         self.input.clear()
         self.metrics.setText("Nueva sesión: todavía sin mediciones.")
@@ -621,6 +712,9 @@ class Window(QMainWindow):
                 if not self._stopper_registered:
                     self.policy.register_stopper(self._stop_for_private)
                     self._stopper_registered = True
+                self.provider_panel.reload()
+                self.personality.reload()
+                self.name.setText(self.personality.context().get("name", "Amiga"))
                 self._apply_preferences()
                 self.status.setText("Reactivada. Pulsá Detectar Ollama para continuar.")
             except (OSError, Denied):
@@ -628,7 +722,7 @@ class Window(QMainWindow):
         self._refresh()
 
     def show_context(self):
-        if self.policy.state is not State.ACTIVE or self._worker is not None:
+        if self.policy.state is not State.ACTIVE:
             return
         dialog = QDialog(self)
         dialog.setWindowTitle("Contexto preparado · Solo en esta sesión")
@@ -648,6 +742,9 @@ class Window(QMainWindow):
         try:
             self.voice_panel.stop_and_wait()
             self.web_panel.stop()
+            self.provider_panel.stop()
+            self.personality.stop()
+            self.histories.stop()
             self.environment.stop()
             self.agenda_panel.stop()
             self.cinematheque.stop()
@@ -670,11 +767,12 @@ def main(argv=None):
     parser.add_argument("--smoke-test", action="store_true")
     parser.add_argument("--memory-self-test", action="store_true")
     parser.add_argument("--tools-self-test", action="store_true")
+    parser.add_argument("--providers-self-test", action="store_true")
     parser.add_argument("--engine-self-test", action="store_true")
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument("--screenshot", type=Path)
     args = parser.parse_args(argv)
-    if (args.memory_self_test or args.engine_self_test or args.tools_self_test) and not (args.smoke_test and args.state_dir):
+    if (args.memory_self_test or args.engine_self_test or args.tools_self_test or args.providers_self_test) and not (args.smoke_test and args.state_dir):
         parser.error("Self-tests require --smoke-test and an explicit temporary --state-dir")
     app = QApplication([sys.argv[0]])
     app.setApplicationName("CompanionIA")
@@ -725,6 +823,20 @@ def main(argv=None):
             assert window.cinematheque.store.delete_moment(moment["id"])
             fixture.unlink()
             panel.set_enabled(False)
+        if args.providers_self_test:
+            window.memory_panel.set_enabled(True)
+            result = window.histories.store.import_conversations("Synthetic", "Packaging", [
+                dict(id="packaging", title="Synthetic apricot history",
+                     messages=[dict(role="user", content="synthetic apricot"),
+                               dict(role="assistant", content="Unverified synthetic answer")])])
+            assert result["imported"] == 1
+            assert window.histories.retrieve("apricot")
+            window.histories.store.delete_account("Synthetic", "Packaging")
+            record = window.provider_panel.store.add("DeepSeek", "Synthetic packaging", "deepseek-flash")
+            assert window.provider_panel.store.key(record["id"]) == ""
+            window.provider_panel.store.delete(record["id"])
+            assert window.provider_panel.account.currentData() is None
+            window.memory_panel.set_enabled(False)
         if args.engine_self_test:
             if not window.voice_panel.ready:
                 return 2

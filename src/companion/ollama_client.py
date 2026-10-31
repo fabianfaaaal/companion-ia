@@ -193,11 +193,13 @@ class OllamaClient:
             self._close()
             self._operation.release()
 
-    def stream_chat(self, model: str, messages: list[dict], cancel: threading.Event) -> Iterator[ChatChunk]:
+    def stream_chat(self, model: str, messages: list[dict], cancel: threading.Event, *, max_tokens: int = 1024) -> Iterator[ChatChunk]:
         self._begin()
         try:
             self._check(cancel)
             self._verify(model)
+            if type(max_tokens) is not int or not 1 <= max_tokens <= 4096:
+                raise ClientError("Presupuesto de salida no válido.")
             self._check(cancel)
             if not isinstance(messages, list) or not messages or any(
                 not isinstance(message, dict)
@@ -209,7 +211,7 @@ class OllamaClient:
                 raise ClientError("Mensajes no válidos.")
             response = self._open("POST", "/api/chat", {
                 "model": model, "messages": messages, "stream": True, "think": self.thinking_required(model),
-                "options": {"num_ctx": 4096, "num_predict": 1024},
+                "options": {"num_ctx": 4096, "num_predict": max_tokens},
             })
             total = 0
             while True:
