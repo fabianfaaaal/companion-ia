@@ -12,3 +12,7 @@ GNU LGPLv3 and GPLv3 texts are in licenses/. Wheels also contain an alternative 
 Qt libraries remain separate in _internal, and can be replaced by compatible rebuilt libraries. Rebuild instructions and pinned dependencies are provided in the repository. Do not use the preview to prohibit reverse engineering needed to debug changes to the LGPL components.
 
 This preview is not a security-audited or signed installer. Packaging of additional modules/resources must add their notices before redistribution.
+
+## Audio del preview de notas y voz
+NumPy (BSD), sounddevice (MIT), PortAudio (MIT) y CFFI (MIT) aportan captura/reproducción y arrays al ejecutable. Se conservan los avisos disponibles en sus paquetes.
+Piper y faster-whisper se instalan opcionalmente en un entorno independiente; sus paquetes/modelos no están incluidos en este ZIP. Piper es GPL-3.0-or-later, faster-whisper MIT; Daniela declara dataset CC-BY-SA-4.0 en su MODEL_CARD. Consultar docs/voice-notes-preview.md y las licencias/atribuciones del directorio del motor.

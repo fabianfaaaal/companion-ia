@@ -40,13 +40,19 @@ Estas funciones son objetivos del producto; la tabla de estado más abajo distin
 | Modo privado y rechazo de resultados tardíos | Implementado al nivel del núcleo |
 | Persistencia del estado privado | Probada cuando se configura una ruta de estado |
 | Control básico de acceso restringido | Implementado; autenticación local pendiente |
-| Pruebas automatizadas | 46 casos locales aprobados (políticas, transporte, sesión e interfaz) |
+| Pruebas automatizadas | 95 casos locales aprobados (políticas, transporte, notas, audio, motores e interfaz) |
 | Chat, interfaz y conexión Ollama | Prototipo Windows verificado con saludo sintético; aceptación del usuario pendiente |
-| Fichas, recuerdos, fotos y Cinemateca | Pendientes |
+| Notas manuales, búsqueda y recuperación | Integradas con memoria opcional; conversación sigue temporal |
+| Voz y dictado | Preview local: lectura de respuesta final y dictado revisable por botón |
+| Fichas, recuerdos multimedia, fotos y Cinemateca | Pendientes |
 | Cifrado del archivo íntimo, agenda y sensores | Pendientes |
 | Android, distribución Linux e instaladores | Pendientes |
 
 Las pruebas usan datos sintéticos. Se comprobó un recorrido real de ventana y modelo local, además de controles automatizados; no constituye una auditoría de seguridad ni aceptación de experiencia. El archivo íntimo con datos reales requiere protección de contenido y claves antes de habilitarse.
+
+## Probar notas y voz
+
+Ver [guía del preview de notas y voz](docs/voice-notes-preview.md). Guardar una nota no programa recordatorios. El audio requiere permisos propios; el motor neural opcional y sus modelos se preparan fuera del repositorio.
 
 ## Desarrollo asistido por IA
 
