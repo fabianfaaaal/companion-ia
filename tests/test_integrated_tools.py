@@ -110,7 +110,7 @@ class ToolsUITests(unittest.TestCase):
         self.w.web_panel._workers.clear();self.w.close();self.w.deleteLater();self.app.processEvents();self.temp.cleanup()
     def test_refresh_does_not_invalidate_chat_and_tabs_survive(self):
         lease=self.w.policy.begin("local.request");self.w._refresh();self.app.processEvents()
-        self.assertTrue(self.w.policy.publish(lease,lambda:True));self.assertEqual(self.w.tabs.count(),5)
+        self.assertTrue(self.w.policy.publish(lease,lambda:True));self.assertEqual(self.w.tabs.count(),8)
         self.w.transcript.setPlainText("synthetic")
     def test_environment_no_poll_without_permission_and_private_clears(self):
         panel=EnvironmentPanel(self.w.policy,read_title=lambda:"Synthetic editor")

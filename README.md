@@ -40,7 +40,7 @@ Estas funciones son objetivos del producto; la tabla de estado más abajo distin
 | Modo privado y rechazo de resultados tardíos | Implementado al nivel del núcleo |
 | Persistencia del estado privado | Probada cuando se configura una ruta de estado |
 | Control básico de acceso restringido | Implementado; autenticación local pendiente |
-| Pruebas automatizadas | 136 casos locales aprobados (políticas, transporte, notas, audio, motores e interfaz) |
+| Pruebas automatizadas | 183 casos locales aprobados (políticas, transporte, notas, audio, motores e interfaz) |
 | Chat, interfaz y conexión Ollama | Prototipo Windows verificado con saludo sintético; aceptación del usuario pendiente |
 | Notas manuales, búsqueda y recuperación | Integradas con memoria opcional; conversación sigue temporal |
 | Voz y dictado | Piper o Qwen3-TTS opcional; Whisper local por botón. Motor registrado entre contextos Windows |
@@ -48,10 +48,17 @@ Estas funciones son objetivos del producto; la tabla de estado más abajo distin
 | Calendario, recordatorios y alarmas | Avisos dentro de la app, con memoria y avisos activos; sonido opt-in |
 | Búsqueda web | Bing/Wikipedia con autorización por consulta, fragmentos y enlaces |
 | Contexto ambiental inicial | Estado autoinformado y título de ventana autorizado en Windows, solo RAM |
+| Proveedores externos y respaldo local | DeepSeek/OpenAI implementados con pruebas simuladas; conexión real pendiente de claves |
+| Historiales multicuenta | Importación seleccionada ChatGPT JSON/normalizado, contexto filtrable y borrado |
+| Personalidad y profundidad | Pestaña de perfil y selección Auto/Breve/Profunda |
 | Archivo íntimo cifrado, cámara y escucha permanente | Pendientes |
 | Android, distribución Linux e instaladores | Pendientes |
 
 Las pruebas usan datos sintéticos. Se comprobó un recorrido real de ventana y modelo local, además de controles automatizados; no constituye una auditoría de seguridad ni aceptación de experiencia. El archivo íntimo con datos reales requiere protección de contenido y claves antes de habilitarse.
+
+## Proveedores e historiales
+
+Ver [guía de proveedores, cuentas e importación](docs/providers-and-history.md). Ollama es la ruta inicial sin tarifa de API; servicios externos requieren credenciales y autorización de cargos del usuario. Los conectores no dan acceso automático a chats previos.
 
 ## Probar notas y voz
 
