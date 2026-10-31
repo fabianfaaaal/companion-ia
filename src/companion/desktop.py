@@ -16,7 +16,11 @@ from PySide6.QtWidgets import (
 )
 from companion.ollama_client import Cancelled, ClientError, OllamaClient
 from companion.policy import Denied, Policy, State
-from companion.session import build_messages, final_answer
+from companion.session import build_messages, final_answer, capabilities, direct_reply
+from companion.memory_panel import MemoryPanel
+from companion.memory_store import MemoryStoreError
+from companion.voice_panel import VoicePanel
+from companion.audio_io import AudioError
 
 STYLE = """
 QWidget { background:#101825; color:#e6edf5; font-family:'Segoe UI'; font-size:14px; }
@@ -31,6 +35,8 @@ QPushButton:hover { background:#304963; }
 QPushButton:disabled { color:#68788b; background:#1a2636; border-color:#26374b; }
 QPushButton#send { background:#75e4c2; color:#10251f; font-weight:700; }
 QPushButton#send:disabled { background:#1a2636; color:#68788b; }
+QCheckBox::indicator { width:16px; height:16px; border:1px solid #567184; background:#1b293c; border-radius:3px; }
+QCheckBox::indicator:checked { background:#75e4c2; border-color:#75e4c2; }
 QPushButton#private { border-color:#dfb26a; color:#ffd99e; }
 """
 
@@ -89,6 +95,7 @@ class Window(QMainWindow):
         self._lease = None
         self._pending_user = ""
         self._thinking = {}
+        self._last_sources = []
         if self.policy.state is State.ACTIVE:
             self.policy.grant("local.request")
         # register_stopper is intentionally not called while restored PRIVATE.
@@ -106,9 +113,13 @@ class Window(QMainWindow):
         title = QLabel("Un espacio para conversar")
         title.setObjectName("title")
         layout.addWidget(title)
-        note = QLabel("Prueba local · Memoria apagada · Sin sensores · La charla se borra al cerrar")
+        note = QLabel("Prueba local · Chat temporal · Notas y audio solo con sus controles")
         note.setObjectName("muted")
+        self.session_note = note
         layout.addWidget(note)
+        self.memory_panel = MemoryPanel(self.policy, state_path.parent, self)
+        self.memory_panel.changed.connect(self._memory_changed)
+        layout.addWidget(self.memory_panel)
         row = QHBoxLayout()
         self.name = QLineEdit("Amiga")
         self.name.setMaxLength(40)
@@ -130,6 +141,10 @@ class Window(QMainWindow):
         self.status = QLabel("Preparada para detectar el motor local.")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
+        self.voice_panel = VoicePanel(self.policy, self)
+        self.voice_panel.transcript.connect(self._dictated)
+        self.voice_panel.notice.connect(self.status.setText)
+        layout.addWidget(self.voice_panel)
         self.transcript = QTextEdit()
         self.transcript.setReadOnly(True)
         self.transcript.setAccessibleName("Conversación de esta sesión")
@@ -164,6 +179,9 @@ class Window(QMainWindow):
         setup = QPushButton("Instalar / abrir Ollama")
         setup.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://ollama.com/download/windows")))
         footer.addWidget(setup)
+        functions = QPushButton("Funciones reales")
+        functions.clicked.connect(lambda: QMessageBox.information(self, "Funciones de esta versión", capabilities(self.memory_panel.enabled) + "\n\nVoz y dictado requieren habilitar sus controles. El micrófono no escucha por sí solo."))
+        footer.addWidget(functions)
         foot = QLabel("Motor separado · Sin APIs pagas · Modelo elegido por vos")
         foot.setObjectName("muted")
         footer.addWidget(foot, 1)
@@ -172,6 +190,25 @@ class Window(QMainWindow):
         self._refresh()
         if auto_connect and self.policy.state is State.ACTIVE:
             QTimer.singleShot(200, self.detect_models)
+
+    def _dictated(self, text):
+        if self.policy.state is State.ACTIVE:
+            previous = self.input.toPlainText().strip()
+            self.input.setPlainText(previous + "\n" + text if previous else text)
+
+    def _memory_changed(self, enabled):
+        self._cancel_worker()
+        self.voice_panel.stop()
+        self.history.clear()
+        self.last_messages.clear()
+        self._last_sources.clear()
+        self._pending_user = ""
+        self.transcript.clear()
+        self.input.clear()
+        self.session_note.setText("Notas manuales habilitadas · Chat temporal · Sin sensores ambientales" if enabled
+                                  else "Memoria apagada · Chat temporal · Micrófono solo al pulsar Dictar")
+        self.status.setText("Memoria de notas habilitada. Usá Guardar nota." if enabled else "Memoria desactivada. Las notas existentes se conservan, pero no se recuperan.")
+        self._refresh()
 
     def _append(self, text):
         cursor = self.transcript.textCursor()
@@ -185,6 +222,8 @@ class Window(QMainWindow):
         busy = self._worker is not None
         for widget in (self.name, self.mode, self.models, self.connect_button, self.fresh):
             widget.setEnabled(active and not busy)
+        self.memory_panel.refresh(busy)
+        self.voice_panel.refresh()
         self.input.setEnabled(active and not busy)
         self.send.setEnabled(active and not busy and self.models.count() > 0)
         self.stop.setEnabled(active and busy)
@@ -229,9 +268,26 @@ class Window(QMainWindow):
         if self._worker is not None or self.policy.state is not State.ACTIVE:
             return
         text = self.input.toPlainText().strip()
+        if not text or len(text) > 4000:
+            self.status.setText("Escribí entre 1 y 4000 caracteres.")
+            return
+        reply = direct_reply(text, memory_enabled=self.memory_panel.enabled)
+        if reply is not None:
+            self.input.clear()
+            self._append("Vos\n" + text + "\n")
+            self._append("Programa · Funciones verificadas\n" + reply + "\n")
+            self.history.extend([{"role": "user", "content": text}, {"role": "assistant", "content": reply}])
+            self.history = self.history[-12:]
+            self.last_messages.clear()
+            self.voice_panel.speak(reply)
+            self.status.setText("Información del programa. No se creó ningún aviso ni se realizó una búsqueda web.")
+            self._refresh()
+            return
         try:
-            messages = build_messages(self.history, text, self.name.text(), self.mode.currentText())
-        except ValueError as exc:
+            self._last_sources = self.memory_panel.retrieve(text)
+            messages = build_messages(self.history, text, self.name.text(), self.mode.currentText(),
+                memories=self._last_sources, memory_enabled=self.memory_panel.enabled)
+        except (ValueError, MemoryStoreError, Denied) as exc:
             self.status.setText(str(exc))
             return
         self.last_messages = messages
@@ -246,6 +302,8 @@ class Window(QMainWindow):
             return
         try:
             self.policy.publish(self._lease, lambda: self._apply_result(result))
+            if "answer" in result:
+                self.voice_panel.speak(result["answer"])
         except Denied:
             return
 
@@ -282,7 +340,8 @@ class Window(QMainWindow):
         if rate is not None:
             summary += f" · Generación: {rate:.1f} tokens/s"
         self.metrics.setText(summary + " · Medición puntual, no benchmark")
-        self.status.setText("Respuesta lista. Memoria apagada; conversación solo en esta sesión.")
+        suffix = f" · Notas recuperadas: {len(self._last_sources)}" if self._last_sources else ""
+        self.status.setText("Respuesta lista. El chat sigue siendo temporal." + suffix)
 
     def _failure(self, job, message):
         if job != self._job or self._lease is None:
@@ -306,19 +365,25 @@ class Window(QMainWindow):
 
     def _stop_for_private(self):
         self._cancel_worker()
+        self.voice_panel.deactivate()
+        for operation in ("microphone.capture", "microphone.devices", "speech.transcribe", "speech.synthesize", "audio.playback"):
+            self.policy.revoke(operation)
         if self._worker is not None and not self._worker.wait(5000):
             raise RuntimeError("No se pudo confirmar la detención del trabajo local.")
 
     def cancel_response(self):
         self._cancel_worker()
+        self.voice_panel.stop()
         self.status.setText("Solicitud detenida. Se descartan los resultados pendientes; el motor puede demorar en liberar recursos.")
         self._refresh()
 
     def new_conversation(self):
         if self._worker is not None:
             return
+        self.voice_panel.stop()
         self.history.clear()
         self.last_messages.clear()
+        self._last_sources.clear()
         self._pending_user = ""
         self.transcript.clear()
         self.input.clear()
@@ -327,6 +392,7 @@ class Window(QMainWindow):
 
     def toggle_private(self):
         if self.policy.state is State.ACTIVE:
+            self.memory_panel.deactivate()
             try:
                 self.policy.enter_private()
             except (OSError, RuntimeError):
@@ -369,6 +435,12 @@ class Window(QMainWindow):
 
     def closeEvent(self, event):
         self._cancel_worker()
+        try:
+            self.voice_panel.stop_and_wait()
+        except (RuntimeError, AudioError):
+            self.status.setText("Esperando cierre del audio. Probá cerrar de nuevo.")
+            event.ignore()
+            return
         if self._worker is not None and not self._worker.wait(5000):
             self.status.setText("Esperando cierre del motor local. Volvé a cerrar en unos segundos.")
             event.ignore()
@@ -381,9 +453,13 @@ class Window(QMainWindow):
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke-test", action="store_true")
+    parser.add_argument("--memory-self-test", action="store_true")
+    parser.add_argument("--engine-self-test", action="store_true")
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument("--screenshot", type=Path)
     args = parser.parse_args(argv)
+    if (args.memory_self_test or args.engine_self_test) and not (args.smoke_test and args.state_dir):
+        parser.error("Self-tests require --smoke-test and an explicit temporary --state-dir")
     app = QApplication([sys.argv[0]])
     app.setApplicationName("CompanionIA")
     app.setOrganizationName("CompanionIA")
@@ -408,7 +484,29 @@ def main(argv=None):
                 window.grab().save(str(args.screenshot))
             window.close()
             app.quit()
-        QTimer.singleShot(350, capture)
+        if args.memory_self_test:
+            panel = window.memory_panel
+            panel.set_enabled(True)
+            saved = panel.store.save_note("Synthetic packaging check", "synthetic apricot")
+            assert panel.store.search("apricot")[0]["id"] == saved["id"]
+            assert panel.store.delete_note(saved["id"])
+            assert panel.store.search("apricot") == []
+            panel.set_enabled(False)
+        if args.engine_self_test:
+            if not window.voice_panel.ready:
+                return 2
+            outcome = {"ok": False}
+            window.policy.grant("speech.synthesize")
+            window.voice_panel._launch("tts", "Hola. Prueba local de voz.")
+            job = window.voice_panel._worker
+            job.result.connect(lambda _, data: outcome.update(ok=bool(data.get("pcm"))))
+            def finished_engine_check():
+                capture()
+                app.exit(0 if outcome["ok"] else 3)
+            job.finished.connect(finished_engine_check)
+            QTimer.singleShot(60000, lambda: (window.voice_panel.stop(), app.exit(4)))
+        else:
+            QTimer.singleShot(350, capture)
     result = app.exec()
     lock.unlock()
     return result

@@ -21,3 +21,18 @@ class SessionTests(unittest.TestCase):
     def test_name_is_bounded(self):
         result = build_messages([], "hola", "A" * 500, "Charla")
         self.assertNotIn("A" * 41, result[0]["content"])
+
+    def test_unavailable_reminder_is_handled_by_program(self):
+        from companion.session import direct_reply
+        self.assertIn("No quedó ninguno creado", direct_reply("Crear un recordatorio mañana"))
+        self.assertIn("No quedó ninguno creado", direct_reply("Crear unr ecordatorio mañana"))
+        self.assertIn("No quedó ninguno creado", direct_reply("Recordame mañana el proyecto"))
+        self.assertIsNone(direct_reply("Recordame lo del proyecto semilla"))
+        self.assertIsNone(direct_reply("Hola, cómo estás"))
+    def test_memory_off_never_injects_notes(self):
+        note = {"id": "fake", "title": "Semilla", "body": "dato sintético"}
+        off = build_messages([], "hola", "Amiga", "Charla", memories=[note])
+        self.assertEqual(len(off), 2)
+        on = build_messages([], "hola", "Amiga", "Charla", memories=[note], memory_enabled=True)
+        self.assertIn("DATOS RECUPERADOS", on[1]["content"])
+        self.assertIn("fake", on[1]["content"])
