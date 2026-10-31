@@ -16,7 +16,10 @@ def capabilities(memory_enabled=False):
 
 def direct_reply(text, *, memory_enabled=False):
     plain = "".join(c for c in unicodedata.normalize("NFD", text.lower()) if not unicodedata.combining(c))
-    if re.search(r"\b(recordatorios?|alarmas?|avisame|agendame)\b", plain):
+    explicit = re.search(r"\b(r?ecordatorios?|re\s+cordatorios?|alarmas?|agenda(?:me|r)?)\b", plain)
+    future_request = re.search(r"\b(avisame|avisarme|recorda(?:me|melo)|recuerda(?:me|melo))\b", plain)
+    future_time = re.search(r"\b(mañana|manana|luego|despues|futuro|hoy|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b|\ben\s+\d+", plain)
+    if explicit or (future_request and future_time):
         return ("Todavía no puedo programar avisos ni recordatorios. No quedó ninguno creado. "
                 "Si querés conservar este momento, activá memoria y usá Guardar nota. "
                 "Guardar una nota no programa un aviso futuro.")

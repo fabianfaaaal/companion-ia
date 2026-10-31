@@ -25,6 +25,9 @@ class SessionTests(unittest.TestCase):
     def test_unavailable_reminder_is_handled_by_program(self):
         from companion.session import direct_reply
         self.assertIn("No quedó ninguno creado", direct_reply("Crear un recordatorio mañana"))
+        self.assertIn("No quedó ninguno creado", direct_reply("Crear unr ecordatorio mañana"))
+        self.assertIn("No quedó ninguno creado", direct_reply("Recordame mañana el proyecto"))
+        self.assertIsNone(direct_reply("Recordame lo del proyecto semilla"))
         self.assertIsNone(direct_reply("Hola, cómo estás"))
     def test_memory_off_never_injects_notes(self):
         note = {"id": "fake", "title": "Semilla", "body": "dato sintético"}
