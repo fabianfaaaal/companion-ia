@@ -1,5 +1,5 @@
 # Chat moderno, perfiles y dispositivo
-Preview 0.0.7a1. No es una versión estable.
+Preview 0.0.8a1. No es una versión estable.
 
 ## Conversaciones
 Guardado automático de mensajes visibles cuando Memoria local está activa. Está activada en un primer inicio normal; se respetan preferencias/perfiles que el usuario haya desactivado y privado persistente.
@@ -33,3 +33,6 @@ Los adaptadores y la configuración siguen documentados en providers-and-history
 ## Verificación
 Pruebas sintéticas de globos, almacenamiento, perfiles, aislamiento del chat privado y cierre HTTP. Archivo/cuenta reales del usuario no se incluyen en Git.
 Autoprueba: --smoke-test --modern-chat-self-test --state-dir DIRECTORIO_TEMPORAL. No activa sensores ni solicitudes pagas.
+
+## Mis datos
+El botón global Mis datos muestra la ubicación real del archivo de esta instalación, permite copiarla y abrirla. Requiere memoria activa y estado normal. No exporta ni envía datos. SQLite no debe editarse manualmente. Ver [primeros pasos](primeros-pasos.md) para descarga, instalación y respaldo.

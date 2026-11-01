@@ -1,0 +1,47 @@
+name: Windows alpha release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements-build-windows.txt
+      - run: python -B -m unittest discover -s tests -v
+      - run: python scripts/build_windows.py --variant modern-chat-preview
+      - name: Verify frozen application with synthetic state
+        shell: pwsh
+        run: |
+          $state = Join-Path $env:RUNNER_TEMP 'companion-smoke'
+          $exe = Resolve-Path 'dist/modern-chat-preview/CompanionIA/CompanionIA.exe'
+          $process = Start-Process -FilePath $exe -ArgumentList @('--smoke-test', '--memory-self-test', '--tools-self-test', '--providers-self-test', '--modern-chat-self-test', '--state-dir', $state) -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) { throw "Frozen smoke failed: $($process.ExitCode)" }
+      - name: Publish portable alpha and checksum
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $zip = 'dist/modern-chat-preview/CompanionIA-windows-preview.zip'
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
+          "$hash  CompanionIA-windows-preview.zip" | Set-Content SHA256SUMS.txt
+          $notes = @"
+          Alpha Windows experimental. ExtraÃ© todo el ZIP y abrÃ­ CompanionIA.exe; conservÃ¡ _internal a su lado.
+
+          Tutorial: https://github.com/fabianfaaaal/companion-ia/blob/$env:GITHUB_REF_NAME/docs/primeros-pasos.md
+
+          Incluye interfaz y Python. Ollama, modelos y voz se instalan por separado. Sin firma comercial. Archivo local sin cifrado; guardado activo inicialmente y configurable. Modo privado deja solo chat local temporal. Mis datos permite localizar el archivo.
+
+          Pruebas automÃ¡ticas y autoprueba del ejecutable no equivalen a aceptaciÃ³n manual de voz, micrÃ³fono o proveedores externos. Windows x64; sin paquete Android/Linux todavÃ­a.
+          "@
+          $notes | Set-Content release-notes.md
+          gh release create $env:GITHUB_REF_NAME $zip SHA256SUMS.txt --prerelease --title "Companion IA $env:GITHUB_REF_NAME Â· Windows alpha" --notes-file release-notes.md
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

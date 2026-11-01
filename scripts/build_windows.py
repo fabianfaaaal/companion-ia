@@ -54,11 +54,12 @@ def main():
         "Abri CompanionIA.exe. Mantene la carpeta _internal junto al ejecutable.\n"
         "Ollama debe estar abierto y tener un modelo local descargado.\n"
         "Detecta el motor y elegi el modelo; despues escribi y pulsa Enviar.\n"
-        "Funciones activadas al primer inicio; desmarca las que no quieras. Chat temporal.\n"
+        "Funciones activadas al primer inicio; desmarca las que no quieras. Guardado de chat con memoria activa.\n"
         "Agenda y Cinemateca inicial disponibles; sin escucha permanente. Motor de voz separado.\n"
         "No tiene firma digital comercial. Consultar THIRD_PARTY_NOTICES.md.\n",
         encoding="utf-8",
     )
+    shutil.copy2(ROOT / "docs" / "primeros-pasos.md", target / "PRIMEROS_PASOS.md")
     archive = dist_root / "CompanionIA-windows-preview.zip"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as output:
         for file in target.rglob("*"):

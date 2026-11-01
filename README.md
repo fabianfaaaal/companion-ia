@@ -12,7 +12,7 @@
 
 **Alpha Windows · guardado inicial configurable · APIs externas con costos propios**
 
-[Guía del preview Windows](docs/modern-chat-preview.md) · [La experiencia](#-la-experiencia) · [Qué funciona](#-qué-funciona-hoy) · [Probar](#-manos-a-la-obra) · [Cómo trabajamos](#-construido-con-ia-y-con-criterio)
+[⬇ Descargar alpha Windows](https://github.com/fabianfaaaal/companion-ia/releases) · [Tutorial de primeros pasos](docs/primeros-pasos.md) · [Guía del preview Windows](docs/modern-chat-preview.md) · [La experiencia](#-la-experiencia) · [Qué funciona](#-qué-funciona-hoy) · [Probar](#-manos-a-la-obra) · [Cómo trabajamos](#-construido-con-ia-y-con-criterio)
 
 </div>
 
@@ -71,7 +71,9 @@ Los historiales importados conservan cuenta y autor. Una respuesta de otro asist
 
 ## 🏁 Manos a la obra
 
-Esta etapa distribuye código y paquetes de prueba construidos localmente. **Todavía no hay instalador universal ni release estable.**
+Descargá el ZIP de la última **pre-release** en [GitHub Releases](https://github.com/fabianfaaaal/companion-ia/releases), extraelo completo y abrí `CompanionIA.exe`. Incluye Python y la interfaz; Ollama, modelos y voz se preparan aparte. **Todavía no hay instalador universal ni release estable.**
+
+Seguí el [tutorial de primeros pasos](docs/primeros-pasos.md). **Mis datos** dentro del programa muestra la carpeta real del archivo local y permite abrirla o copiar su ubicación.
 
 Guías:
 

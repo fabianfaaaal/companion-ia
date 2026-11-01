@@ -26,6 +26,20 @@ class ModernChatTests(unittest.TestCase):
         self.w._pending_chat_saves.clear()
         self.w.close();self.w.deleteLater();self.app.processEvents();self.temp.cleanup()
 
+    def test_data_folder_uses_real_state_location_and_respects_private(self):
+        w = self.w
+        with patch("companion.desktop.QDesktopServices.openUrl", return_value=True) as opened:
+            self.assertFalse(w.open_data_directory())
+            opened.assert_not_called()
+            w.memory_panel.set_enabled(True)
+            self.assertTrue(w.open_data_directory())
+            self.assertEqual(opened.call_args.args[0].toLocalFile(), self.temp.name.replace("\\", "/"))
+            opened.reset_mock()
+            w.toggle_private()
+            self.assertFalse(w.data_button.isEnabled())
+            self.assertFalse(w.open_data_directory())
+            opened.assert_not_called()
+
     def test_saved_bubbles_reopen_without_duplicate_messages(self):
         w=self.w;w.memory_panel.set_enabled(True)
         w._append("Synthetic hello 😊",role="user",label="Vos")

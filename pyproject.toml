@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "companion-ia"
-version = "0.0.7a1"
+version = "0.0.8a1"
 description = "Local-first companion desktop preview"
 requires-python = ">=3.12"
 license = "Apache-2.0"

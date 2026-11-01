@@ -1,4 +1,4 @@
-"""First Windows desktop prototype. Conversation exists in RAM only."""
+"""Desktop companion with optional local archive and isolated private chat."""
 from __future__ import annotations
 import argparse
 import json
@@ -129,6 +129,7 @@ class Window(QMainWindow):
         super().__init__()
         self.setWindowTitle("Companion IA · Prueba local")
         self.resize(1240, 900)
+        self._data_directory = state_path.parent.resolve()
         self.policy = Policy(state_path)
         self.history: list[dict] = []
         self.last_messages: list[dict] = []
@@ -326,6 +327,9 @@ class Window(QMainWindow):
         self.profile_button = QPushButton("Perfiles de privacidad")
         self.profile_button.clicked.connect(self.show_privacy_profiles)
         toolbar.addWidget(self.profile_button)
+        self.data_button = QPushButton("Mis datos")
+        self.data_button.clicked.connect(self.show_data_directory)
+        toolbar.addWidget(self.data_button)
         self.device_button = QPushButton("Modo dispositivo")
         self.device_button.clicked.connect(self.open_device)
         toolbar.addWidget(self.device_button)
@@ -414,6 +418,52 @@ class Window(QMainWindow):
         self.device.hide()
         self._device_mode = False
         QApplication.instance().setQuitOnLastWindowClosed(True)
+
+    def show_data_directory(self):
+        if self.policy.state is not State.ACTIVE or not self.memory_panel.enabled:
+            self.status.setText("Mis datos requiere memoria activa y salir del modo privado.")
+            return
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Mis datos · Archivo local")
+        dialog.resize(620, 300)
+        layout = QVBoxLayout(dialog)
+        title = QLabel("Tus recuerdos, en tu PC")
+        title.setObjectName("title")
+        layout.addWidget(title)
+        info = QLabel("Esta es la carpeta real de datos de esta instalación. Contiene el archivo SQLite "
+                      "de conversaciones, notas, agenda e historiales, y otros archivos de configuración. "
+                      "Las fotos pueden referenciar archivos originales fuera de esta carpeta. "
+                      "Los modelos de Ollama y voz se guardan por separado.")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+        location = QLineEdit(str(self._data_directory))
+        location.setReadOnly(True)
+        layout.addWidget(location)
+        caution = QLabel("El archivo aún no está cifrado. No compartas esta carpeta: puede contener "
+                         "datos personales y credenciales protegidas de tus proveedores. "
+                         "Cerrá la app antes de copiarla como respaldo; no edites SQLite manualmente. "
+                         "Para leer o borrar recuerdos, usá las pestañas del programa.")
+        caution.setWordWrap(True)
+        layout.addWidget(caution)
+        buttons = QHBoxLayout()
+        copy = QPushButton("Copiar ubicación")
+        copy.clicked.connect(lambda: QApplication.clipboard().setText(str(self._data_directory)))
+        open_folder = QPushButton("Abrir carpeta")
+        open_folder.clicked.connect(self.open_data_directory)
+        close = QPushButton("Cerrar")
+        close.clicked.connect(dialog.accept)
+        for button in (copy, open_folder, close):
+            buttons.addWidget(button)
+        layout.addLayout(buttons)
+        dialog.exec()
+
+    def open_data_directory(self):
+        if self.policy.state is not State.ACTIVE or not self.memory_panel.enabled:
+            return False
+        opened = QDesktopServices.openUrl(QUrl.fromLocalFile(str(self._data_directory)))
+        if not opened:
+            self.status.setText("No se pudo abrir el Explorador. Copiá la ubicación desde Mis datos.")
+        return opened
 
     def open_memoteca(self):
         if self.policy.state is not State.ACTIVE:
@@ -789,6 +839,7 @@ class Window(QMainWindow):
         self.connect_button.setEnabled(chatting and not busy)
         self.fresh.setEnabled(chatting and not busy)
         self.emoji.setEnabled(chatting and not busy)
+        self.data_button.setEnabled(active and self.memory_panel.enabled and not busy)
         self.profile_button.setEnabled(active and not busy)
         self.sidebar.setEnabled(active)
         self.input.setEnabled(chatting and not busy)
