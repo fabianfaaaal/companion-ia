@@ -33,7 +33,7 @@ class ModernChatTests(unittest.TestCase):
             opened.assert_not_called()
             w.memory_panel.set_enabled(True)
             self.assertTrue(w.open_data_directory())
-            self.assertEqual(opened.call_args.args[0].toLocalFile(), self.temp.name.replace("\\", "/"))
+            self.assertTrue(Path(opened.call_args.args[0].toLocalFile()).samefile(self.temp.name))
             opened.reset_mock()
             w.toggle_private()
             self.assertFalse(w.data_button.isEnabled())
@@ -42,8 +42,8 @@ class ModernChatTests(unittest.TestCase):
 
     def test_saved_bubbles_reopen_without_duplicate_messages(self):
         w=self.w;w.memory_panel.set_enabled(True)
-        w._append("Synthetic hello 😊",role="user",label="Vos")
-        w._append("Synthetic reply ✨",role="assistant",label="Amiga")
+        w._append("Synthetic hello ðŸ˜Š",role="user",label="Vos")
+        w._append("Synthetic reply âœ¨",role="assistant",label="Amiga")
         identifier=w._current_conversation
         self.assertEqual(len(w.conversations.messages(identifier)),2)
         w.new_conversation();w.open_conversation(identifier)

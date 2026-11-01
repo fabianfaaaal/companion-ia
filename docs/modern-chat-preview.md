@@ -1,5 +1,5 @@
 # Chat moderno, perfiles y dispositivo
-Preview 0.0.8a1. No es una versión estable.
+Preview 0.0.8a2. No es una versión estable.
 
 ## Conversaciones
 Guardado automático de mensajes visibles cuando Memoria local está activa. Está activada en un primer inicio normal; se respetan preferencias/perfiles que el usuario haya desactivado y privado persistente.
