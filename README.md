@@ -36,6 +36,7 @@ Queremos que puedas charlar, trabajar, configurar una mascota o una compañera y
 | 🖼️ Memoteca independiente | Galería de fotos/descripciones en otra ventana, con los mismos permisos |
 | 🧠 Contexto recuperable | Notas e historiales seleccionados, fuentes inspeccionables |
 | 🔌 Modelos intercambiables | Ollama local; adaptadores DeepSeek/OpenAI y respaldo local informado |
+| 🌍 Chat web sin API | Intercambio manual con navegador: revisar, copiar, pegar respuesta y voz; [guía](docs/chat-web-manual.md) |
 | 🎭 Personalidad | Nombre, perfil, estilo e instrucciones propias |
 | 🎙️ Voz y dictado | Piper o Qwen TTS opcional; Whisper local por botón |
 | 🗓️ Agenda y alarmas | Avisos locales con aplicación abierta y controles activos |

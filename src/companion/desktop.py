@@ -37,6 +37,7 @@ from companion.chat_view import ChatView, ConversationSidebar, EmojiButton
 from companion.conversation_store import ConversationStore
 from companion.privacy_profiles import PrivacyProfilesDialog, PROFILE_FLAGS, validate_flags, ProfileError
 from companion.device_view import CompanionDevice
+from companion.browser_chat import BrowserChatDialog
 
 STYLE = """
 QWidget { background:#101825; color:#e6edf5; font-family:'Segoe UI'; font-size:14px; }
@@ -129,6 +130,7 @@ class Window(QMainWindow):
         super().__init__()
         self.setWindowTitle("Companion IA · Prueba local")
         self.resize(1240, 900)
+        self._browser_dialog = None
         self._data_directory = state_path.parent.resolve()
         self.policy = Policy(state_path)
         self.history: list[dict] = []
@@ -327,6 +329,9 @@ class Window(QMainWindow):
         self.profile_button = QPushButton("Perfiles de privacidad")
         self.profile_button.clicked.connect(self.show_privacy_profiles)
         toolbar.addWidget(self.profile_button)
+        self.browser_button = QPushButton("Chat web sin API")
+        self.browser_button.clicked.connect(self.open_browser_chat)
+        toolbar.addWidget(self.browser_button)
         self.data_button = QPushButton("Mis datos")
         self.data_button.clicked.connect(self.show_data_directory)
         toolbar.addWidget(self.data_button)
@@ -418,6 +423,36 @@ class Window(QMainWindow):
         self.device.hide()
         self._device_mode = False
         QApplication.instance().setQuitOnLastWindowClosed(True)
+
+    def open_browser_chat(self):
+        if self.policy.state is not State.ACTIVE or self._worker is not None:
+            return
+        try:
+            dialog = BrowserChatDialog(self.policy, self.input.toPlainText(), self.name.text(), self)
+        except ValueError as error:
+            self.status.setText(str(error))
+            return
+        self._browser_dialog = dialog
+        try:
+            if dialog.exec() != QDialog.DialogCode.Accepted or self.policy.state is not State.ACTIVE:
+                return
+            answer, message, provider = dialog.answer, dialog.message, dialog.provider
+            self._append(message, role="user", label="Vos")
+            self._append("Respuesta pegada por el usuario desde " + provider + ". Origen no verificado automáticamente.",
+                         role="notice", label="Programa")
+            self._append(answer, role="assistant", label=self.name.text().strip() or "Amiga",
+                         provider=provider + " · web manual")
+            self.history.extend([{"role": "user", "content": message}, {"role": "assistant", "content": answer}])
+            self.history = self.history[-12:]
+            self.input.clear()
+            self.last_messages.clear()
+            self.response_time.setText("Respuesta: intercambio web manual, sin medición de generación")
+            self.voice_panel.speak(answer)
+            self.status.setText("Respuesta web incorporada por vos. Guardado según el perfil de memoria activo.")
+        finally:
+            dialog.clear_private()
+            dialog.deleteLater()
+            self._browser_dialog = None
 
     def show_data_directory(self):
         if self.policy.state is not State.ACTIVE or not self.memory_panel.enabled:
@@ -839,6 +874,7 @@ class Window(QMainWindow):
         self.connect_button.setEnabled(chatting and not busy)
         self.fresh.setEnabled(chatting and not busy)
         self.emoji.setEnabled(chatting and not busy)
+        self.browser_button.setEnabled(active and not busy)
         self.data_button.setEnabled(active and self.memory_panel.enabled and not busy)
         self.profile_button.setEnabled(active and not busy)
         self.sidebar.setEnabled(active)
@@ -1068,6 +1104,8 @@ class Window(QMainWindow):
         self.policy.revoke("remote.request")
 
     def _stop_for_private(self):
+        if self._browser_dialog is not None:
+            self._browser_dialog.clear_private()
         self._cancel_worker()
         self.voice_panel.deactivate()
         self.web_panel.stop()
