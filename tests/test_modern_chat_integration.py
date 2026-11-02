@@ -40,6 +40,24 @@ class ModernChatTests(unittest.TestCase):
             self.assertFalse(w.open_data_directory())
             opened.assert_not_called()
 
+    def test_browser_reply_enters_chat_with_provenance_and_voice(self):
+        from PySide6.QtWidgets import QDialog
+        w = self.w
+        w.memory_panel.set_enabled(True)
+        w.input.setPlainText("Synthetic web question")
+        def accept(dialog):
+            dialog.answer = "Synthetic pasted answer"
+            dialog.provider = "DeepSeek"
+            return QDialog.DialogCode.Accepted
+        with patch("companion.browser_chat.BrowserChatDialog.exec", accept), patch.object(w.voice_panel, "speak") as speak:
+            w.open_browser_chat()
+        self.assertIn("Synthetic pasted answer", w.transcript.toPlainText())
+        self.assertIn("Origen no verificado", w.transcript.toPlainText())
+        self.assertEqual(len(w.conversations.messages(w._current_conversation)), 3)
+        self.assertEqual(w.history[-1]["content"], "Synthetic pasted answer")
+        speak.assert_called_once_with("Synthetic pasted answer")
+        self.assertIsNone(w._browser_dialog)
+
     def test_saved_bubbles_reopen_without_duplicate_messages(self):
         w=self.w;w.memory_panel.set_enabled(True)
         w._append("Synthetic hello ðŸ˜Š",role="user",label="Vos")
