@@ -2,20 +2,22 @@
 from __future__ import annotations
 import os
 import sys
-from PySide6.QtCore import QThread, Signal
-from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
+import time
+from PySide6.QtCore import QThread, Signal, QTimer
+from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget, QProgressBar
 from .policy import State, Denied
 from .setup_manager import SetupManager, SetupCancelled, SetupError
 
 
 class SetupJob(QThread):
     progress = Signal(str)
+    progress_state = Signal(object)
     succeeded = Signal(str)
     failed = Signal(str)
 
     def __init__(self, policy, action, parent=None):
         super().__init__(parent)
-        self.manager=SetupManager(policy,progress=self.progress.emit)
+        self.manager=SetupManager(policy,progress=self.progress.emit,progress_state=self.progress_state.emit)
         self.action=action
 
     def run(self):
@@ -88,6 +90,13 @@ class SetupPanel(QWidget):
         self._job=None
         self._jobs=set()
         self._managers=[]
+        self._started_at=None
+        self._last_update_at=None
+        self._last_percent=None
+        self._activity_frame=0
+        self.activity_timer=QTimer(self)
+        self.activity_timer.setInterval(250)
+        self.activity_timer.timeout.connect(self._tick_activity)
         layout=QVBoxLayout(self)
         title=QLabel("Preparar Companion IA")
         layout.addWidget(title)
@@ -107,6 +116,20 @@ class SetupPanel(QWidget):
         self.cancel_button=QPushButton("Cancelar preparación")
         self.cancel_button.clicked.connect(self.cancel)
         layout.addWidget(self.cancel_button)
+        self.progress_bar=QProgressBar()
+        self.progress_bar.setAccessibleName("Progreso del paso actual")
+        self.progress_bar.setMinimumHeight(26)
+        self.progress_bar.setStyleSheet("QProgressBar {border:1px solid #3c526a; border-radius:6px; background:#152132; color:#e6edf5; text-align:center;} QProgressBar::chunk {background:#286956; border-radius:4px;}")
+        self.progress_bar.setRange(0,100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.hide()
+        layout.addWidget(self.progress_bar)
+        self.activity=QLabel("")
+        self.activity.setWordWrap(True)
+        layout.addWidget(self.activity)
+        self.progress_note=QLabel("El porcentaje corresponde al paso actual. Si no se puede medir, se muestra una animación y el tiempo transcurrido.")
+        self.progress_note.setWordWrap(True)
+        layout.addWidget(self.progress_note)
         self.status=QLabel("Todavía no se inició ninguna descarga.")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
@@ -136,11 +159,19 @@ class SetupPanel(QWidget):
         self._jobs.add(job)
         self._managers.append(job.manager)
         job.progress.connect(lambda text:self._progress(job,text))
+        job.progress_state.connect(lambda state:self._step_progress(job,state))
         job.succeeded.connect(lambda text:self._success(job,text))
         job.failed.connect(lambda text:self._failure(job,text))
         job.finished.connect(lambda:self._finished(job))
         self.policy.grant("setup.start")
         lease=self.policy.begin("setup.start")
+        self._started_at=self._last_update_at=time.monotonic()
+        self._last_percent=None
+        self.progress_bar.show()
+        self.progress_bar.setRange(0,0)
+        self.progress_bar.setFormat("En curso…")
+        self.activity_timer.start()
+        self._tick_activity()
         self.policy.publish(lease,job.start)
         self.refresh(True)
 
@@ -155,24 +186,64 @@ class SetupPanel(QWidget):
         except Denied:
             return False
 
+    def _tick_activity(self):
+        if self._job is None or self.policy.state is not State.ACTIVE or self._started_at is None:
+            return
+        self._activity_frame=(self._activity_frame+1)%4
+        elapsed=max(0,int(time.monotonic()-self._started_at))
+        quiet=max(0,int(time.monotonic()-(self._last_update_at or self._started_at)))
+        detail=" · Última actualización hace " + str(quiet) + " s" if quiet >= 10 else ""
+        self.activity.setText("En curso" + "."*(self._activity_frame+1) + f" · Transcurrido: {elapsed//60:02d}:{elapsed%60:02d}" + detail)
+
+    def _step_progress(self,job,state):
+        if not self._current(job) or not isinstance(state,dict):
+            return
+        value=state.get("percent")
+        self._last_update_at=time.monotonic()
+        if type(value) is int and 0 <= value <= 100:
+            self._last_percent=value
+            self.progress_bar.setRange(0,100)
+            self.progress_bar.setValue(value)
+            self.progress_bar.setFormat("Paso actual: %p%")
+        else:
+            self._last_percent=None
+            self.progress_bar.setRange(0,0)
+            self.progress_bar.setFormat("En curso…")
+        self._tick_activity()
+
+    def _end_activity(self,success=False):
+        self.activity_timer.stop()
+        self.progress_bar.setRange(0,100)
+        self.progress_bar.setValue(100 if success else (self._last_percent or 0))
+        self.progress_bar.setFormat("Completado · 100%" if success else "Preparación interrumpida")
+        if self._started_at is not None:
+            elapsed=max(0,int(time.monotonic()-self._started_at))
+            self.activity.setText(("Completado" if success else "Detenido") + f" · Tiempo transcurrido: {elapsed//60:02d}:{elapsed%60:02d}")
+
     def _progress(self,job,text):
         if self._current(job):
+            self._last_update_at=time.monotonic()
             self.status.setText(text)
 
     def _success(self,job,text):
         if self._current(job):
+            self._end_activity(success=True)
             self.status.setText(text)
             self.notice.emit(text)
             self.prepared.emit()
 
     def _failure(self,job,text):
         if self._current(job,allow_cancelled=True):
+            self._end_activity()
             self.status.setText(text)
             self.notice.emit(text)
 
     def _finished(self,job):
         if self._job is job:
             self._job=None
+            self.activity_timer.stop()
+            if self.progress_bar.maximum()==0:
+                self._end_activity()
         self._jobs.discard(job)
         try:
             job.manager.confirm_stopped()
@@ -187,6 +258,11 @@ class SetupPanel(QWidget):
     def cancel(self):
         for manager in self._managers:
             manager.cancel()
+        self.activity_timer.stop()
+        if self._job is not None:
+            self.progress_bar.setRange(0,0)
+            self.progress_bar.setFormat("Cancelando…")
+            self.activity.setText("Cancelando… esperando confirmación de cierre")
         self.status.setText("Cancelando preparación…")
 
     def stop(self):
@@ -199,4 +275,6 @@ class SetupPanel(QWidget):
                 raise RuntimeError("No se pudo confirmar la detención de la preparación.")
         for manager in self._managers:
             manager.confirm_stopped()
+        self._end_activity()
+        self.activity.clear()
         self.refresh(False)

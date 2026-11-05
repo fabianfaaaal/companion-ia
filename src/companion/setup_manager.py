@@ -153,10 +153,11 @@ class ElevatedInstaller:
 
 
 class SetupManager:
-    def __init__(self, policy, *, home=None, progress=None):
+    def __init__(self, policy, *, home=None, progress=None, progress_state=None):
         self.policy = policy
         self.home = Path(home) if home is not None else Path.home() / ".companion-ia"
         self.progress = progress or (lambda text: None)
+        self.progress_state = progress_state or (lambda state: None)
         self.cancelled = threading.Event()
         self._lock = threading.RLock()
         self._process = None
@@ -182,9 +183,11 @@ class SetupManager:
         self._check()
         return self.policy.publish(self._lease, callback)
 
-    def _status(self, text):
+    def _status(self, text, *, percent=None):
         self._check()
         self.progress(text)
+        # A percentage describes this measurable step, never a guessed ETA.
+        self.progress_state({"label": text, "percent": percent})
 
     def cancel(self):
         self.cancelled.set()
@@ -304,7 +307,8 @@ class SetupManager:
                         raise SetupError("La descarga supera el tamaño permitido.")
                     self._effect(lambda: stream.write(data))
                     digest.update(data)
-                    self._status(f"Descargando: {total // (1024**2)} MiB" + (f" de {int(size) // (1024**2)} MiB" if size else ""))
+                    self._status(f"Descargando: {total // (1024**2)} MiB" + (f" de {int(size) // (1024**2)} MiB" if size else ""),
+                                 percent=min(100, total * 100 // int(size)) if size and int(size) > 0 else None)
             if not total or size is not None and total != int(size):
                 raise SetupError("La descarga quedó incompleta. Reintentá la preparación.")
             return digest.hexdigest()
@@ -332,7 +336,9 @@ class SetupManager:
         cache = self.home / "setup-downloads" / uuid4().hex
         target = cache / filename
         digest = self._download(url, target, limit=limit)
+        self._status("Comprobando firma del instalador…")
         self._verify_signature(target, publishers)
+        self._status("Instalando componente… Windows puede pedir confirmación. Este paso puede tardar varios minutos.")
         self._check()
         self._run([str(target), *args],elevate=elevate)
         self._effect(lambda: (cache / "receipt.json").write_text(json.dumps({"url":url,"sha256":digest}), encoding="utf-8"))
@@ -378,9 +384,11 @@ class SetupManager:
 
     @staticmethod
     def ollama_executable():
-        local = Path(os.environ.get("LOCALAPPDATA", str(Path.home()/"AppData/Local"))) / "Programs/Ollama/ollama.exe"
-        if local.is_file():
-            return local
+        candidates = [Path(os.environ.get("LOCALAPPDATA", str(Path.home()/"AppData/Local"))) / "Programs/Ollama/ollama.exe",
+                      Path.home() / "AppData/Local/Programs/Ollama/ollama.exe"]
+        for local in candidates:
+            if local.is_file():
+                return local
         found = shutil.which("ollama")
         return Path(found) if found else None
 
@@ -409,9 +417,11 @@ class SetupManager:
                     if "error" in result:
                         raise SetupError("El motor no pudo descargar el modelo. Podés reintentar.")
                     status = str(result.get("status", "Descargando modelo"))[:120]
+                    percent = None
                     if type(result.get("total")) is int and type(result.get("completed")) is int and result["total"]>0:
-                        status += f" · {min(100, result['completed']*100//result['total'])}%"
-                    self._status(status)
+                        percent = max(0, min(100, result["completed"] * 100 // result["total"]))
+                        status += f" · {percent}%"
+                    self._status(status, percent=percent)
                     if result.get("status") == "success":
                         done = True
                         break
@@ -450,6 +460,7 @@ class SetupManager:
             self._installer(OLLAMA_URL,"OllamaSetup.exe",{"Ollama","Ollama Inc.","Ollama, Inc."},
                             ["/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-"],limit=4*1024**3)
             executable=self.ollama_executable()
+            ready=self._ollama_ready()
         if not ready and executable is not None:
             # Existing installs are started, never replaced or reconfigured globally.
             env=os.environ.copy()
@@ -459,7 +470,8 @@ class SetupManager:
                     self._server=subprocess.Popen([str(executable),"serve"], stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,env=env,creationflags=CREATE_NO_WINDOW)
             self._effect(launch)
-            for _ in range(30):
+            for attempt in range(30):
+                self._status(f"Esperando al motor local… comprobación {attempt + 1} de 30")
                 if self._ollama_ready():
                     ready=True
                     break

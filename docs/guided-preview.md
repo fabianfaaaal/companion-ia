@@ -19,7 +19,7 @@ La separación facilita actualización, respaldo y reinstalación, pero no es ci
 
 No requiere cuenta, suscripción ni clave API para el recorrido local. No activa por sí solo micrófono ni memoria. **Dictar** sigue siendo por botón. Las funciones cloud propias de otros programas no se configuran globalmente desde Companion.
 
-El instalador muestra progreso y permite cancelar/reintentar. Cancelar no desinstala lo que ya terminó ni borra motores existentes. Windows puede solicitar confirmación para Microsoft Visual C++ cuando falta ese requisito del sistema. Las descargas necesitan Internet y espacio libre; las cifras de tamaño son estimaciones. Qwen TTS experimental no es una descarga obligatoria. El recorrido recomendado usa Piper.
+El instalador muestra una barra de 0 a 100% cuando conoce el tamaño del paso actual. En instalaciones, verificaciones y esperas sin duración medible, muestra una animación y el tiempo transcurrido; si no hay novedades durante diez segundos, muestra cuánto hace desde la última actualización. El porcentaje es del paso actual, no una estimación del tiempo total restante. Al terminar, fallar o cancelar, detiene la actividad y explica el resultado. Permite cancelar/reintentar. Cancelar no desinstala lo que ya terminó ni borra motores existentes. Windows puede solicitar confirmación para Microsoft Visual C++ cuando falta ese requisito del sistema. Las descargas necesitan Internet y espacio libre; las cifras de tamaño son estimaciones. Qwen TTS experimental no es una descarga obligatoria. El recorrido recomendado usa Piper.
 
 Una instalación limpia real sigue pendiente de aceptación: las pruebas de desarrollo simulan red/instaladores y no prueban tu conexión, drivers ni hardware de audio.
 
