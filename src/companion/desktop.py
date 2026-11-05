@@ -28,6 +28,7 @@ from companion.environment_panel import EnvironmentPanel
 from companion.web_panel import WebPanel
 from companion.session import requested_tool
 from companion.preferences import Preferences
+from companion.onboarding import SetupDialog, SetupState
 from companion.provider_panel import ProviderPanel
 from companion.personality_panel import PersonalityPanel
 from companion.history_panel import HistoryPanel
@@ -145,6 +146,9 @@ class Window(QMainWindow):
         self._response_started = None
         self._preferences = Preferences(state_path.parent / "preferences.json")
         self._preference_values = None
+        self._setup = SetupState(state_path.parent / "onboarding.json", self.policy)
+        self._require_setup = False
+        self._startup_done = False
         self._current_conversation = None
         self._session_display = []
         self._draft_chat_key = "draft:" + uuid4().hex
@@ -329,6 +333,9 @@ class Window(QMainWindow):
         self.profile_button = QPushButton("Perfiles de privacidad")
         self.profile_button.clicked.connect(self.show_privacy_profiles)
         toolbar.addWidget(self.profile_button)
+        self.setup_button = QPushButton("Configuración inicial")
+        self.setup_button.clicked.connect(self.configure_startup)
+        toolbar.addWidget(self.setup_button)
         self.browser_button = QPushButton("Chat web sin API")
         self.browser_button.clicked.connect(self.open_browser_chat)
         toolbar.addWidget(self.browser_button)
@@ -361,7 +368,8 @@ class Window(QMainWindow):
         if auto_connect and self.policy.state is State.ACTIVE:
             QTimer.singleShot(200, self.detect_models)
 
-    def enable_preferences(self):
+    def enable_preferences(self, *, require_setup=False):
+        self._require_setup = require_setup
         self._preference_values = self._preferences.load()
         controls = {
             "memory": self.memory_panel.toggle, "voice": self.voice_panel.read,
@@ -377,6 +385,49 @@ class Window(QMainWindow):
         self._apply_preferences()
         self._restore_active_profile()
 
+    def start_welcome(self):
+        if self._startup_done or self.policy.state is not State.ACTIVE:
+            return
+        self._startup_done = True
+        pending = not self._setup.complete()
+        text = ("¡Hola! Soy tu companion. Antes de empezar, elegí qué querés guardar y cómo usar la voz."
+                if pending else "¡Hola! Qué bueno verte. Estoy acá para acompañarte. ¿Cómo seguimos hoy?")
+        # A startup notice is UI only: never a stored message or LLM request.
+        self.transcript.append_message("notice", text)
+        self.voice_panel.speak(text)
+        if pending:
+            self.configure_startup()
+
+    def configure_startup(self):
+        if self.policy.state is not State.ACTIVE:
+            return
+        dialog = SetupDialog(self._preference_values or self._preferences.load(), self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or self.policy.state is not State.ACTIVE:
+            return
+        options = dialog.options()
+        flags = self._privacy_flags()
+        flags.update({key: options[key] for key in PROFILE_FLAGS if key in options})
+        try:
+            self.voice_panel.stop_and_wait()
+            self.policy.grant("setup.write")
+            lease = self.policy.begin("setup.write")
+            def save_setup():
+                self._preferences.save(options)
+                temporary = self._profile_flags_path.with_suffix(".tmp")
+                temporary.write_text(json.dumps(validate_flags(flags)), encoding="utf-8")
+                temporary.replace(self._profile_flags_path)
+            self.policy.publish(lease, save_setup)
+            self._setup.finish()
+        except (OSError, ValueError, Denied, AudioError, RuntimeError):
+            self.status.setText("No se pudo guardar la configuración. Reintentá desde Configuración inicial.")
+            return
+        self._preference_values = options
+        # The initial setup explicitly replaces a previously selected profile.
+        self.apply_privacy_profile(flags, persist=False)
+        self._apply_preferences()
+        self.status.setText("Configuración lista. " + ("Los próximos mensajes se guardarán en esta PC."
+                            if self.memory_panel.enabled else "Continuamos con chat temporal, sin guardar."))
+
     def _remember_option(self, key, checked):
         if self._preference_values is None or self.policy.state is not State.ACTIVE:
             return
@@ -390,6 +441,10 @@ class Window(QMainWindow):
         if self._preference_values is None or self.policy.state is not State.ACTIVE:
             return
         options = self._preference_values
+        if self._require_setup and not self._setup.complete():
+            options = dict.fromkeys(options, False)
+            options["voice"] = self._preference_values["voice"]
+            options["natural_voice"] = self._preference_values["natural_voice"]
         self.memory_panel.set_enabled(options["memory"])
         self.voice_panel.quality.setCurrentIndex(0 if options["natural_voice"] else 1)
         self.voice_panel.prefer_natural = options["natural_voice"]
@@ -524,6 +579,8 @@ class Window(QMainWindow):
             self.apply_privacy_profile(dialog.selected_flags)
 
     def _restore_active_profile(self):
+        if self._require_setup and not self._setup.complete():
+            return
         if self.policy.state is not State.ACTIVE:
             return
         self.policy.grant("profiles.read")
@@ -1284,8 +1341,10 @@ def main(argv=None):
         return 1
     window = Window(data_dir / "privacy.json", auto_connect=not args.smoke_test)
     if not args.smoke_test:
-        window.enable_preferences()
+        window.enable_preferences(require_setup=True)
     window.show()
+    if not args.smoke_test:
+        QTimer.singleShot(350, window.start_welcome)
     if args.smoke_test:
         def capture():
             if args.screenshot:

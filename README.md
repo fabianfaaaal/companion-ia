@@ -52,7 +52,7 @@ Qwen TTS está disponible como experimento de voz y resultó lento en la PC de r
 
 ## 🧭 Tus controles importan
 
-El primer inicio normal trae funciones habilitadas, incluido el guardado del chat. **Las opciones que desmarcás y los perfiles elegidos se recuerdan.** Guardar, usar contexto y enviarlo a otro proveedor son decisiones distintas.
+El nuevo preview saluda al abrir y pide configuración inicial antes de guardar. Podés confirmar las funciones preseleccionadas o elegir Más tarde y continuar con chat temporal. La voz requiere motor local preparado; privado permanece silencioso. Las descargas anteriores mantienen su comportamiento previo. **Las opciones que desmarcás y los perfiles elegidos se recuerdan.** Guardar, usar contexto y enviarlo a otro proveedor son decisiones distintas.
 
 - **Memoria activa:** conserva los mensajes visibles del chat; notas, fotos e importaciones tienen sus controles.
 - **Memoria apagada:** no accede al archivo conservado; el chat nuevo vive en esa sesión.
@@ -104,7 +104,7 @@ Para construir el paquete de este hito:
 
 ## 🧪 Lo probado y lo que falta aceptar
 
-La suite local más reciente tiene **239 pruebas aprobadas**, con datos sintéticos. Incluye permisos, persistencia, cancelación, transporte, filtros de contexto, perfiles y widgets.
+La suite local más reciente tiene **253 pruebas aprobadas**, con datos sintéticos. Incluye permisos, persistencia, cancelación, transporte, filtros de contexto, perfiles y widgets.
 
 ```powershell
 .\.venv\Scripts\python.exe -B -m unittest discover -s tests -v

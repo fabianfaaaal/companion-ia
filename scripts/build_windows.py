@@ -15,7 +15,7 @@ def main():
     if sys.platform != "win32":
         raise SystemExit("Build the Windows executable on Windows.")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--variant", default="memory-voice-preview", choices=["modern-chat-preview", "providers-preview", "voice-ready-preview", "interaction-preview", "tools-preview", "memory-voice-preview", "desktop-preview"])
+    parser.add_argument("--variant", default="memory-voice-preview", choices=["startup-preview", "modern-chat-preview", "providers-preview", "voice-ready-preview", "interaction-preview", "tools-preview", "memory-voice-preview", "desktop-preview"])
     args = parser.parse_args()
     dist_root = ROOT / "dist" / args.variant
     build_env = os.environ.copy()
@@ -54,7 +54,7 @@ def main():
         "Abri CompanionIA.exe. Mantene la carpeta _internal junto al ejecutable.\n"
         "Ollama debe estar abierto y tener un modelo local descargado.\n"
         "Detecta el motor y elegi el modelo; despues escribi y pulsa Enviar.\n"
-        "Funciones activadas al primer inicio; desmarca las que no quieras. Guardado de chat con memoria activa.\n"
+        "Bienvenida y configuración inicial antes del guardado. Más tarde mantiene chat temporal. Voz requiere motor local.\n"
         "Agenda y Cinemateca inicial disponibles; sin escucha permanente. Motor de voz separado.\n"
         "No tiene firma digital comercial. Consultar THIRD_PARTY_NOTICES.md.\n",
         encoding="utf-8",

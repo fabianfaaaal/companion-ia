@@ -18,10 +18,10 @@ ollama pull qwen2.5:7b
 El modelo ocupa varios GB y requiere una PC con recursos suficientes. La RTX 3080 de 10 GB es nuestro equipo de referencia, no un requisito ni una garantía de velocidad. Si la app no conecta, abrí Ollama desde Inicio; como alternativa ejecutá `ollama serve` y dejá esa ventana abierta. Si informa que el puerto está ocupado, probablemente ya está funcionando.
 
 ## 3. Tu primera conversación
-Abrí Companion IA, pulsá **Detectar Ollama**, elegí el modelo y escribí. Enter envía; Shift+Enter agrega una línea. La lista izquierda permite volver a charlas guardadas. El tiempo de respuesta aparece bajo el chat.
+En el preview de inicio, completá o postergá la configuración inicial. La bienvenida se lee si está habilitada la voz y preparado su motor; privado permanece silencioso. Después pulsá **Detectar Ollama**, elegí el modelo y escribí. Enter envía; Shift+Enter agrega una línea. La lista izquierda permite volver a charlas guardadas. El tiempo de respuesta aparece bajo el chat.
 
 ## 4. Elegir qué guardar
-En un inicio normal el guardado viene activado. **Perfiles de privacidad** permite cambiarlo. **Mis datos → Abrir carpeta** lleva a la carpeta real del archivo de esta instalación; Copiar ubicación permite encontrarla después. Allí conviven SQLite y configuraciones: no todo es un archivo de texto legible. Leé y borrá conversaciones desde el programa. Fotos originales, modelos y motores de voz pueden vivir fuera de esa carpeta.
+En el nuevo preview de inicio, la bienvenida solicita configuración básica antes de habilitar el guardado. Confirmá Guardar y comenzar o elegí Más tarde para conversar sin guardar. Configuración inicial permite volver a elegir. Las versiones públicas anteriores conservan su comportamiento previo. **Perfiles de privacidad** permite cambiarlo. **Mis datos → Abrir carpeta** lleva a la carpeta real del archivo de esta instalación; Copiar ubicación permite encontrarla después. Allí conviven SQLite y configuraciones: no todo es un archivo de texto legible. Leé y borrá conversaciones desde el programa. Fotos originales, modelos y motores de voz pueden vivir fuera de esa carpeta.
 
 El archivo aún no está cifrado. No lo publiques ni lo subas a GitHub. Para respaldarlo, cerrá la app y copiá la carpeta completa. **Modo privado** desconecta memoria, percepción, voz y proveedores externos; deja solo chat local temporal. No borra el archivo anterior ni protege una carpeta que ya abriste con el Explorador.
 
