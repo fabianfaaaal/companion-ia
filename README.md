@@ -34,7 +34,10 @@ Queremos que puedas charlar, trabajar, configurar una mascota o una compañera y
 | 🔒 Chat privado | Solo chat local temporal; apaga memoria, percepción, voz y APIs externas |
 | 🪄 Dispositivo flotante | Ventana compacta sin marco, acceso al programa completo y tres pieles |
 | 🖼️ Memoteca independiente | Galería de fotos/descripciones en otra ventana, con los mismos permisos |
-| 🧠 Contexto recuperable | Notas e historiales seleccionados, fuentes inspeccionables |
+| 🧠 Contexto recuperable | Notas, historiales y fichas con claves/alias, ambigüedad y versiones |
+| 📝 Aprendizaje revisable | Propuestas explícitas con edición, aceptación/rechazo y conflictos |
+| 📁 Copias por carpetas | Exportar, pegar en entrada y aceptar restauración con copia previa |
+| 📦 Preparación guiada Windows | Aplicación, Ollama/modelo y voz/dictado mediante botones |
 | 🔌 Modelos intercambiables | Ollama local; adaptadores DeepSeek/OpenAI y respaldo local informado |
 | 🌍 Chat web sin API | Intercambio manual con navegador: revisar, copiar, pegar respuesta y voz; [guía](docs/chat-web-manual.md) |
 | 🎭 Personalidad | Nombre, perfil, estilo e instrucciones propias |
@@ -46,13 +49,13 @@ Queremos que puedas charlar, trabajar, configurar una mascota o una compañera y
 
 ### Lo que todavía estamos construyendo 🛠️
 
-Tutorial de palabras clave, archivo íntimo cifrado, instalador unificado, sincronización de historiales, más proveedores y una Cinemateca con relatos/video. Cámara, interpretación visual y escucha continua no están integradas.
+El preview local nuevo incluye fichas/claves con aprendizaje revisable, respaldo por carpetas y preparación guiada de motores. Falta aceptar su recorrido en una PC limpia. Siguen pendientes el archivo íntimo cifrado (para el final), sincronización de historiales, más proveedores y una Cinemateca con relatos/video. Cámara, interpretación visual y escucha continua no están integradas.
 
 Qwen TTS está disponible como experimento de voz y resultó lento en la PC de referencia; Piper es la alternativa de menor demora. No prometemos conversación de voz en tiempo real.
 
 ## 🧭 Tus controles importan
 
-El primer inicio normal trae funciones habilitadas, incluido el guardado del chat. **Las opciones que desmarcás y los perfiles elegidos se recuerdan.** Guardar, usar contexto y enviarlo a otro proveedor son decisiones distintas.
+El nuevo preview saluda al abrir y pide configuración inicial antes de guardar. Podés confirmar las funciones preseleccionadas o elegir Más tarde y continuar con chat temporal. La voz requiere motor local preparado; privado permanece silencioso. Las descargas anteriores mantienen su comportamiento previo. **Las opciones que desmarcás y los perfiles elegidos se recuerdan.** Guardar, usar contexto y enviarlo a otro proveedor son decisiones distintas.
 
 - **Memoria activa:** conserva los mensajes visibles del chat; notas, fotos e importaciones tienen sus controles.
 - **Memoria apagada:** no accede al archivo conservado; el chat nuevo vive en esa sesión.
@@ -74,7 +77,7 @@ Los historiales importados conservan cuenta y autor. Una respuesta de otro asist
 
 Descargá el ZIP de la última **pre-release** en [GitHub Releases](https://github.com/fabianfaaaal/companion-ia/releases), extraelo completo y abrí `CompanionIA.exe`. Incluye Python y la interfaz; Ollama, modelos y voz se preparan aparte. **Todavía no hay instalador universal ni release estable.**
 
-Seguí el [tutorial de primeros pasos](docs/primeros-pasos.md). **Mis datos** dentro del programa muestra la carpeta real del archivo local y permite abrirla o copiar su ubicación.
+Seguí el [tutorial de primeros pasos](docs/primeros-pasos.md). Para el nuevo preview, consultá [fichas, copias y preparación con botones](docs/guided-preview.md). **Mis datos** dentro del programa muestra la carpeta real del archivo local y permite abrirla o copiar su ubicación.
 
 Guías:
 
@@ -104,7 +107,7 @@ Para construir el paquete de este hito:
 
 ## 🧪 Lo probado y lo que falta aceptar
 
-La suite local más reciente tiene **239 pruebas aprobadas**, con datos sintéticos. Incluye permisos, persistencia, cancelación, transporte, filtros de contexto, perfiles y widgets.
+La suite local más reciente tiene **364 pruebas ejecutadas: 363 aprobadas y una omitida por permisos del sistema para crear un enlace simbólico**, con datos sintéticos. Incluye permisos, persistencia, cancelación, transporte, filtros de contexto, perfiles y widgets.
 
 ```powershell
 .\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
