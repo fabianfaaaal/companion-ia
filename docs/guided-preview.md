@@ -57,3 +57,12 @@ La ubicación fija es `transfer/incoming`. La restauración **reemplaza** el arc
 Las claves/cuentas API locales no se reemplazan ni viajan. Para otra PC, prepará motores y cuentas propias por separado. El modo privado se conserva. Con memoria apagada o privado no se escanean ni exportan datos; recuperar una transacción de restauración ya aceptada es una operación de integridad independiente.
 
 El archivo y sus copias siguen sin cifrar; el cifrado queda para un hito final.
+
+
+## Iniciar un Ollama que ya está instalado
+
+En Conversación, pulsá **Iniciar Ollama** y aceptá. Se inicia el servicio local y después se detectan los modelos, sin descargar ni instalar componentes. Si no está instalado, usá Preparar motores.
+
+Como alternativa, abrí PowerShell, ejecutá `ollama serve` y pulsá **Detectar Ollama** en Companion. Si informa que el puerto ya está ocupado, el servicio puede estar iniciado: probá Detectar Ollama. La preparación de voz y la conexión del chat son componentes distintos.
+
+El paquete conserva los recursos de certificados obligatorios del Python que lo construye. No se desactiva HTTPS ni la validación de certificados para corregir problemas de conexión. Las autopruebas del ejecutable comprueban también que se pueda crear un contexto TLS válido.

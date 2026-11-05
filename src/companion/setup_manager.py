@@ -227,7 +227,7 @@ class SetupManager:
         def spawn():
             with self._lock:
                 self._check()
-                self._process = ElevatedInstaller(args) if elevate else subprocess.Popen(args, stdout=output, stderr=subprocess.DEVNULL,
+                self._process = ElevatedInstaller(args) if elevate else subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.DEVNULL,
                     env=env, creationflags=CREATE_NO_WINDOW)
                 return self._process
         process = self._effect(spawn)
@@ -449,12 +449,13 @@ class SetupManager:
             self._check()
             return False
 
-    def prepare_chat(self):
-        self._begin()
+    def _ensure_chat_engine(self, *, allow_install):
         self._status("Revisando el motor local…")
         ready=self._ollama_ready()
         executable=self.ollama_executable()
         if not ready and executable is None:
+            if not allow_install:
+                raise SetupError("Ollama no está instalado. Abrí Preparar motores y aceptá la preparación del chat local.")
             self._space(6*1024**3)
             self._status("Descargando instalador oficial de Ollama…")
             self._installer(OLLAMA_URL,"OllamaSetup.exe",{"Ollama","Ollama Inc.","Ollama, Inc."},
@@ -467,11 +468,16 @@ class SetupManager:
             env["OLLAMA_HOST"]="127.0.0.1:11434"
             def launch():
                 with self._lock:
-                    self._server=subprocess.Popen([str(executable),"serve"], stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,env=env,creationflags=CREATE_NO_WINDOW)
+                    self._server=subprocess.Popen([str(executable),"serve"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,env=env,cwd=executable.parent,creationflags=CREATE_NO_WINDOW)
             self._effect(launch)
             for attempt in range(30):
                 self._status(f"Esperando al motor local… comprobación {attempt + 1} de 30")
+                if self._server.poll() is not None:
+                    if self._ollama_ready():
+                        ready=True
+                        break
+                    raise SetupError("Ollama se cerró al iniciar (código " + str(self._server.returncode) + "). No hay conexión local; revisá Preparar motores.")
                 if self._ollama_ready():
                     ready=True
                     break
@@ -479,6 +485,18 @@ class SetupManager:
                 time.sleep(.5)
         if not ready:
             raise SetupError("No se pudo iniciar Ollama automáticamente. Pulsá Aceptar para reintentar más tarde.")
+        return ready
+
+    def start_chat(self):
+        self._begin()
+        self._ensure_chat_engine(allow_install=False)
+        with self._lock:
+            self._server=None
+        return "Ollama está iniciado. Detectando los modelos locales disponibles…"
+
+    def prepare_chat(self):
+        self._begin()
+        self._ensure_chat_engine(allow_install=True)
         inventory=self._api("tags")
         models=inventory.get("models",[])
         if not isinstance(models,list):

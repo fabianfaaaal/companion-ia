@@ -218,10 +218,19 @@ class Window(QMainWindow):
         row.addWidget(self.mode)
         row.addWidget(self.models, 1)
         row.addWidget(self.connect_button)
+        self.start_engine_button = QPushButton("Iniciar Ollama")
+        self.start_engine_button.setToolTip("Inicia el motor local instalado. Alternativa en PowerShell: ollama serve; después pulsá Detectar Ollama.")
+        self.start_engine_button.clicked.connect(lambda: self.engine_setup.start("start_chat"))
+        row.addWidget(self.start_engine_button)
         layout.addLayout(row)
         self.status = QLabel("Preparada para detectar el motor local.")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
+        engine_help = QLabel("Podés iniciar el motor desde Iniciar Ollama. Alternativa en PowerShell: ollama serve → Detectar Ollama.")
+        engine_help.setObjectName("muted")
+        engine_help.setWordWrap(True)
+        engine_help.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(engine_help)
         self.voice_panel = VoicePanel(self.policy, self)
         self.voice_panel.transcript.connect(self._dictated)
         self.voice_panel.notice.connect(self.status.setText)
@@ -1044,6 +1053,7 @@ class Window(QMainWindow):
         self.voice_panel.refresh()
         self.models.setEnabled(chatting and not busy)
         self.connect_button.setEnabled(chatting and not busy)
+        self.start_engine_button.setEnabled(active and not busy)
         self.fresh.setEnabled(chatting and not busy)
         self.emoji.setEnabled(chatting and not busy)
         self.browser_button.setEnabled(active and not busy)
@@ -1474,10 +1484,11 @@ def main(argv=None):
     parser.add_argument("--modern-chat-self-test", action="store_true")
     parser.add_argument("--engine-self-test", action="store_true")
     parser.add_argument("--workflows-self-test", action="store_true")
+    parser.add_argument("--ollama-start-self-test", action="store_true")
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument("--screenshot", type=Path)
     args = parser.parse_args(argv)
-    if (args.memory_self_test or args.engine_self_test or args.tools_self_test or args.providers_self_test or args.modern_chat_self_test or args.workflows_self_test) and not (args.smoke_test and args.state_dir):
+    if (args.memory_self_test or args.engine_self_test or args.tools_self_test or args.providers_self_test or args.modern_chat_self_test or args.workflows_self_test or args.ollama_start_self_test) and not (args.smoke_test and args.state_dir):
         parser.error("Self-tests require --smoke-test and an explicit temporary --state-dir")
     app = QApplication([sys.argv[0]])
     app.setApplicationName("CompanionIA")
@@ -1535,6 +1546,12 @@ def main(argv=None):
     if not args.smoke_test:
         QTimer.singleShot(350, window.start_welcome)
     if args.smoke_test:
+        if args.ollama_start_self_test:
+            from companion.ollama_start_check import run_start_check
+            code = run_start_check(data_dir)
+            window.close()
+            lock.unlock()
+            return code
         def capture():
             if args.screenshot:
                 args.screenshot.parent.mkdir(parents=True, exist_ok=True)
@@ -1596,6 +1613,9 @@ def main(argv=None):
             assert len(window.conversations.messages(identifier)) == 2
             window.conversations.delete(identifier)
         if args.workflows_self_test:
+            import ssl
+            tls_context = ssl.create_default_context()
+            assert tls_context.check_hostname and tls_context.verify_mode == ssl.CERT_REQUIRED
             from companion.archive_transfer import ArchiveTransfer
             from companion.setup_manager import voice_resources
             window.memory_panel.set_enabled(True)

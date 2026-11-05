@@ -37,6 +37,9 @@ class SetupJob(QThread):
 
 
 INFORMATION = {
+    "start_chat": (
+        "Iniciar Ollama instalado",
+        "Aceptar inicia el Ollama instalado en esta PC y comprueba la conexión local. No descarga modelos ni instala programas, no envía conversaciones y no activa el micrófono. Como alternativa manual, ejecutá ollama serve en PowerShell y después pulsá Detectar Ollama."),
     "prepare_all": (
         "Preparar chat, voz y dictado",
         "Se revisan los motores existentes y se conservan. Si falta alguno, se descarga desde sus sitios oficiales.\n\n"
