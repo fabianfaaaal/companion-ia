@@ -107,7 +107,7 @@ Para construir el paquete de este hito:
 
 ## 🧪 Lo probado y lo que falta aceptar
 
-La suite local más reciente tiene **347 pruebas ejecutadas: 346 aprobadas y una omitida por permisos del sistema para crear un enlace simbólico**, con datos sintéticos. Incluye permisos, persistencia, cancelación, transporte, filtros de contexto, perfiles y widgets.
+La suite local más reciente tiene **349 pruebas ejecutadas: 348 aprobadas y una omitida por permisos del sistema para crear un enlace simbólico**, con datos sintéticos. Incluye permisos, persistencia, cancelación, transporte, filtros de contexto, perfiles y widgets.
 
 ```powershell
 .\.venv\Scripts\python.exe -B -m unittest discover -s tests -v

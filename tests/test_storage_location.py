@@ -15,7 +15,8 @@ from companion.storage_location import StorageLocation, StorageLocationError, ID
 class StorageLocationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        # Windows runner temp paths can use RUNNER~1 for the same directory.
+        self.root = Path(self.temp.name).resolve()
         self.control = self.root / "control"
         self.location = StorageLocation(self.control)
 
@@ -204,7 +205,8 @@ class StorageDialogTests(unittest.TestCase):
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+        # Windows runner temp paths can use RUNNER~1 for the same directory.
+        self.root = Path(self.temp.name).resolve()
         self.location = StorageLocation(self.root / "control")
         self.dialog = StorageLocationDialog(self.location)
 

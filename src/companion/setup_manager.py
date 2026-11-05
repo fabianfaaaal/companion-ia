@@ -42,6 +42,11 @@ class SetupCancelled(SetupError):
     pass
 
 
+def supported_platform():
+    """The real installer remains Windows x64 only; tests mock this boundary."""
+    return os.name == "nt" and platform.machine().lower() in ("amd64", "x86_64")
+
+
 def validate_url(url):
     parts = urlsplit(url)
     if parts.scheme != "https" or parts.hostname not in ALLOWED_HOSTS or parts.username or parts.password or parts.port not in (None, 443):
@@ -160,7 +165,7 @@ class SetupManager:
         self._server = None
 
     def _begin(self):
-        if os.name != "nt" or platform.machine().lower() not in ("amd64", "x86_64"):
+        if not supported_platform():
             raise SetupError("Esta preparación automática requiere Windows x64. No se cambió tu equipo.")
         self.policy.grant("setup.install")
         self._lease = self.policy.begin("setup.install")

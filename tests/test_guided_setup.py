@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"src"))
 from companion.policy import Policy,Denied
-from companion.setup_manager import SetupManager,SetupError,SetupCancelled,validate_url,voice_resources,MODEL
+from companion.setup_manager import SetupManager,SetupError,SetupCancelled,validate_url,voice_resources,MODEL,supported_platform
 
 
 class Response(io.BytesIO):
@@ -24,6 +24,9 @@ class Response(io.BytesIO):
 
 class SetupTests(unittest.TestCase):
     def setUp(self):
+        platform_boundary=patch("companion.setup_manager.supported_platform",return_value=True)
+        platform_boundary.start()
+        self.addCleanup(platform_boundary.stop)
         self.temp=tempfile.TemporaryDirectory()
         self.root=Path(self.temp.name)
         self.policy=Policy(self.root/"privacy.json")
@@ -33,6 +36,13 @@ class SetupTests(unittest.TestCase):
     def tearDown(self):
         self.manager.cancel()
         self.temp.cleanup()
+
+    def test_unsupported_platform_still_refuses_real_installation(self):
+        manager=SetupManager(self.policy,home=self.root/"unsupported")
+        with patch("companion.setup_manager.supported_platform",return_value=False),self.assertRaises(SetupError):
+            manager._begin()
+        self.assertIsNone(manager._lease)
+        self.assertFalse(manager.home.exists())
 
     def test_constructing_does_not_write_or_download(self):
         self.assertFalse(self.manager.home.exists())
@@ -243,7 +253,8 @@ class SetupUITests(unittest.TestCase):
     def test_late_success_after_private_resume_is_discarded(self):
         from types import SimpleNamespace
         manager=SetupManager(self.policy,home=Path(self.temp.name)/"managed")
-        manager._begin()
+        with patch("companion.setup_manager.supported_platform",return_value=True):
+            manager._begin()
         job=SimpleNamespace(manager=manager)
         self.panel._job=job
         self.policy.enter_private()
@@ -253,3 +264,11 @@ class SetupUITests(unittest.TestCase):
         prepared.emit.assert_not_called()
         self.assertNotEqual(self.panel.status.text(),"stale completion")
         self.panel._job=None
+
+
+class SetupPlatformTests(unittest.TestCase):
+    def test_real_platform_boundary_accepts_only_windows_x64(self):
+        for system,machine,expected in (("nt","AMD64",True),("nt","x86_64",True),
+                                        ("nt","ARM64",False),("posix","x86_64",False)):
+            with self.subTest(system=system,machine=machine),patch("companion.setup_manager.os.name",system),patch("companion.setup_manager.platform.machine",return_value=machine):
+                self.assertEqual(supported_platform(),expected)
