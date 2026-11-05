@@ -19,3 +19,9 @@ Piper y faster-whisper se instalan opcionalmente en un entorno independiente; su
 - Pillow 13.0.0: HPND license and bundled imaging-library notices, included from wheel metadata in licenses/Pillow. Used for local photo validation and thumbnails.
 
 - Qwen3-TTS-12Hz-0.6B-CustomVoice and qwen-tts: optional separately prepared Apache-2.0 runtime/model; not bundled in the Qt ZIP. PyTorch/Torchaudio and dependencies retain their own licenses. The preparer records immutable model revision, installed versions and license metadata under ~/.companion-ia/qwen-voice-engine. See docs/voice-ready-preview.md.
+
+
+## Guided Windows preparation
+The frozen application bundles its own setup instructions and lockfile, not the optional installers or models. Optional downloads retain their own terms: Ollama MIT; Qwen2.5 1.5B Apache-2.0; Python PSF; Microsoft Visual C++ Redistributable Microsoft license terms; Piper GPL-3.0-or-later; faster-whisper MIT; Daniela dataset CC-BY-SA-4.0 (consult the downloaded MODEL_CARD). The installer presents this information before acceptance. Microsoft Visual C++ may require Windows administrative confirmation. Program separation is not a license compatibility determination.
+
+Official preparation references: https://docs.ollama.com/windows ; https://docs.python.org/3.12/using/windows.html#installing-without-ui ; https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170 .

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 
 
 class _BubbleText(QTextEdit):
+    learning_requested = Signal(str)
     """Selectable plain text that grows vertically and wraps even long URLs."""
     def __init__(self, text, parent=None):
         super().__init__(parent)
@@ -34,6 +35,16 @@ class _BubbleText(QTextEdit):
             "QTextEdit { background:transparent; border:0; border-radius:0;"
             "padding:0; color:#ecf4fa; selection-background-color:#39776e; }")
         self.document().documentLayout().documentSizeChanged.connect(self._fit_height)
+
+    def contextMenuEvent(self, event):
+        menu = self.createStandardContextMenu()
+        selection = self.textCursor().selectedText().replace("\u2029", "\n").strip()
+        menu.addSeparator()
+        action = menu.addAction("Proponer como aprendizaje…")
+        action.setEnabled(bool(selection) and len(selection) <= 8000)
+        action.triggered.connect(lambda: self.learning_requested.emit(selection))
+        menu.exec(event.globalPos())
+        menu.deleteLater()
 
     def _fit_height(self, *_):
         height = max(24, math.ceil(self.document().size().height()) + 4)
@@ -83,6 +94,7 @@ class _Bubble(QFrame):
 
 
 class ChatView(QScrollArea):
+    learning_requested = Signal(str, str)
     """Conversation surface compatible with existing plain-text inspections."""
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -150,6 +162,7 @@ class ChatView(QScrollArea):
             self._bubbles.append((notice, role))
         else:
             bubble = _Bubble(role, text, str(label), str(meta), row)
+            bubble.body.learning_requested.connect(lambda selected, role=role: self.learning_requested.emit(selected, role))
             if role == "user":
                 layout.addStretch(1)
                 layout.addWidget(bubble)
