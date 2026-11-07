@@ -601,7 +601,7 @@ class SetupManager:
             self._check()
             raise SetupError("Las bibliotecas de voz no pudieron cargarse. Puede faltar un requisito compatible o reiniciar Windows. El motor anterior se conserva.") from None
         self._effect(lambda: register_engine(root))
-        return "Voz y dictado preparados. El micrófono solo se abre al pulsar Dictar."
+        return "Voz y dictado preparados. El micrófono se abre al usar Dictar o Handy."
 
     def install_application(self):
         self._begin()

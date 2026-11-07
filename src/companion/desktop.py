@@ -145,6 +145,7 @@ class Window(QMainWindow):
         self.last_messages: list[dict] = []
         self._worker = None
         self._job = 0
+        self._handy_job = None
         self._lease = None
         self._pending_user = ""
         self._pending_route = None
@@ -233,6 +234,7 @@ class Window(QMainWindow):
         layout.addWidget(engine_help)
         self.voice_panel = VoicePanel(self.policy, self)
         self.voice_panel.transcript.connect(self._dictated)
+        self.voice_panel.handy_transcript.connect(self._send_handy)
         self.voice_panel.notice.connect(self.status.setText)
         layout.addWidget(self.voice_panel)
         self.transcript = ChatView()
@@ -535,7 +537,7 @@ class Window(QMainWindow):
         self.web_panel.use.setChecked(options["web_context"])
         self.defaults_note.setText(
             "Inicio con funciones activadas; podés desmarcarlas. Memoria local sin cifrar; "
-            "micrófono solo con Dictar. Entorno observa títulos en RAM; Web envía consultas al pulsar Buscar.")
+            "micrófono al usar Dictar o Handy. Entorno observa títulos en RAM; Web envía consultas al pulsar Buscar.")
         self._refresh()
 
     def _insert_emoji(self, text):
@@ -860,7 +862,7 @@ class Window(QMainWindow):
         self.transcript.clear()
         self.input.clear()
         self.session_note.setText("Guardado automático de conversaciones activo · Contexto según perfil" if enabled
-                                  else "Memoria apagada · Chat temporal · Micrófono solo al pulsar Dictar")
+                                  else "Memoria apagada · Chat temporal · Micrófono por botón")
         self.saving_badge.setText("  Guardado local activo  " if enabled else "  Chat temporal · sin guardar  ")
         self.status.setText("Guardado automático de mensajes habilitado." if enabled else "Memoria desactivada. Las notas existentes se conservan, pero no se recuperan.")
         self._refresh_conversations()
@@ -1050,6 +1052,7 @@ class Window(QMainWindow):
         self.global_privacy.setText("Reactivar" if self.policy.state is State.PRIVATE else "Modo privado")
         self.global_privacy.setEnabled(self.policy.state in (State.ACTIVE, State.PRIVATE))
         self.global_status.setText("  Modo privado activo" if not active else "  Herramientas disponibles en las pestañas")
+        self.voice_panel.handy_available = active and not busy and bool(self.models.currentText())
         self.voice_panel.refresh()
         self.models.setEnabled(chatting and not busy)
         self.connect_button.setEnabled(chatting and not busy)
@@ -1072,7 +1075,7 @@ class Window(QMainWindow):
         elif self.policy.state is State.ERROR:
             self.status.setText("No se pudo confirmar el estado de privacidad. El programa permanece bloqueado.")
 
-    def _start(self, kind, messages=None):
+    def _start(self, kind, messages=None, *, handy=False):
         if self._worker is not None:
             return
         try:
@@ -1080,8 +1083,9 @@ class Window(QMainWindow):
         except Denied:
             return
         self._job += 1
+        self._handy_job = self._job if handy else None
         if kind == "chat":
-            route = None if self.policy.state is State.PRIVATE else self._pending_route
+            route = None if handy or self.policy.state is State.PRIVATE else self._pending_route
             remote_lease = None
             if route and route.get("allowed") and not route.get("error"):
                 self.policy.grant("remote.request")
@@ -1089,6 +1093,8 @@ class Window(QMainWindow):
             worker = InteractionWorker(self._job, self.models.currentText(), messages,
                 self._pending_remote_messages, route, self._pending_depth, self.mode.currentText(),
                 self.policy, lease, remote_lease)
+            if handy:
+                worker.local_max_tokens = 160
             worker.stage.connect(self._worker_stage)
             worker.snapshot.connect(self._worker_snapshot)
         else:
@@ -1114,9 +1120,20 @@ class Window(QMainWindow):
             self.status.setText("Motor local conectado. " + suffix)
 
     def send_message(self):
+        self._send_message(self.input.toPlainText().strip())
+
+    def _send_handy(self, text):
+        if self.policy.state is not State.ACTIVE:
+            return
+        if self._worker is not None or not self.models.currentText():
+            self._dictated(text)
+            self.status.setText("Ollama no está disponible para Handy. El texto quedó en el editor.")
+            return
+        self._send_message(text, handy=True)
+
+    def _send_message(self, text, *, handy=False):
         if self._worker is not None or not self._chat_allowed():
             return
-        text = self.input.toPlainText().strip()
         if not text or len(text) > 4000:
             self.status.setText("Escribí entre 1 y 4000 caracteres.")
             return
@@ -1133,7 +1150,7 @@ class Window(QMainWindow):
             self._append(text, role="user", label="Vos")
             self._start("chat", messages)
             return
-        tool = requested_tool(text)
+        tool = None if handy else requested_tool(text)
         if tool == "agenda":
             self.tabs.setCurrentWidget(self.agenda_panel)
             self.agenda_panel.draft_text = text
@@ -1144,7 +1161,7 @@ class Window(QMainWindow):
             self.open_memoteca()
         elif tool == "environment":
             self.tabs.setCurrentWidget(self.environment)
-        reply = direct_reply(text, memory_enabled=self.memory_panel.enabled)
+        reply = None if handy else direct_reply(text, memory_enabled=self.memory_panel.enabled)
         if reply is not None:
             self.input.clear()
             self._append("Vos\n" + text + "\n")
@@ -1160,6 +1177,8 @@ class Window(QMainWindow):
         try:
             cards = self._retrieve_context_cards(text)
             if cards is None:
+                if handy:
+                    self._dictated(text)
                 self._response_started = None
                 self.response_time.setText("Respuesta: no enviada")
                 self.status.setText("Mensaje conservado. Elegí una ficha o reformulá la clave para continuar.")
@@ -1172,33 +1191,44 @@ class Window(QMainWindow):
             archived_memories = distribute([notes, photos, imports])
             self._last_sources = cards + archived_memories
             temporary_context = self.web_panel.context() + self.environment.context()
-            self._pending_depth = resolve_depth(text, self.provider_panel.depth.currentText())
+            self._pending_depth = "brief" if handy else resolve_depth(text, self.provider_panel.depth.currentText())
             personality = self.personality.context()
             messages = build_messages(self.history, text, self.name.text(), self.mode.currentText(),
                 memories=archived_memories, memory_enabled=self.memory_panel.enabled,
                 extra_context=temporary_context, personality=personality, depth=self._pending_depth, context_cards=cards)
-            self._pending_route = self.provider_panel.request()
-            outbound_memories = distribute([
-                notes + photos if self.provider_panel.share_memory.isChecked() else [],
-                imports if self.provider_panel.share_imports.isChecked() else []])
-            self._pending_remote_messages = build_messages(
-                self.history if self.provider_panel.share_history.isChecked() else [],
-                text, self.name.text(), self.mode.currentText(),
-                memories=outbound_memories, memory_enabled=self.memory_panel.enabled,
-                extra_context=temporary_context if self.provider_panel.share_environment.isChecked() else [],
-                personality=personality, depth=self._pending_depth,
-                context_cards=cards if self.provider_panel.share_memory.isChecked() else [])
+            if handy:
+                messages[0]["content"] += "\nPara esta charla de voz, contestá en una o dos frases breves en español."
+            self._pending_route = None
+            self._pending_remote_messages = []
+            if not handy:
+                self._pending_route = self.provider_panel.request()
+                outbound_memories = distribute([
+                    notes + photos if self.provider_panel.share_memory.isChecked() else [],
+                    imports if self.provider_panel.share_imports.isChecked() else []])
+                self._pending_remote_messages = build_messages(
+                    self.history if self.provider_panel.share_history.isChecked() else [],
+                    text, self.name.text(), self.mode.currentText(),
+                    memories=outbound_memories, memory_enabled=self.memory_panel.enabled,
+                    extra_context=temporary_context if self.provider_panel.share_environment.isChecked() else [],
+                    personality=personality, depth=self._pending_depth,
+                    context_cards=cards if self.provider_panel.share_memory.isChecked() else [])
         except (ValueError, MemoryStoreError, Denied) as exc:
+            if handy:
+                self._dictated(text)
             self._response_started = None
             self.response_time.setText("Respuesta: no enviada")
             self.status.setText(str(exc))
             return
         self.last_messages = self._pending_remote_messages if self._pending_route and self._pending_route.get("allowed") else messages
         self._pending_user = text
-        self.input.clear()
+        if not handy:
+            self.input.clear()
         self._append("Vos\n" + text + "\n")
         self.status.setText("Preparando respuesta final… Podés detenerla o activar modo privado.")
-        self._start("chat", messages)
+        if handy:
+            self._start("chat", messages, handy=True)
+        else:
+            self._start("chat", messages)
 
     def _result(self, job, result):
         if job != self._job or self._lease is None:
@@ -1206,7 +1236,10 @@ class Window(QMainWindow):
         try:
             self.policy.publish(self._lease, lambda: self._apply_result(result))
             if "answer" in result:
-                self.voice_panel.speak(result["answer"])
+                if job == self._handy_job:
+                    self.voice_panel.speak(result["answer"], force_piper=True)
+                else:
+                    self.voice_panel.speak(result["answer"])
         except Denied:
             return
 

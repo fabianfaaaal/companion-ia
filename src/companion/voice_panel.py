@@ -150,6 +150,7 @@ class SpeechJob(QThread):
 
 class VoicePanel(QWidget):
     transcript = Signal(str)
+    handy_transcript = Signal(str)
     notice = Signal(str)
 
     def __init__(self, policy, parent=None):
@@ -164,8 +165,11 @@ class VoicePanel(QWidget):
         self._lease = None
         self._workers = set()
         self._queue = []
+        self._handy_transcription_job = None
         self._capturing = False
         self._capture_started = 0.0
+        self._handy_capture = False
+        self.handy_available = False
         self._tts_started = 0.0
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -183,6 +187,10 @@ class VoicePanel(QWidget):
         self.devices.currentIndexChanged.connect(self._device_changed)
         self.record = QPushButton("Dictar")
         self.record.clicked.connect(self.toggle_record)
+        self.handy = QPushButton("Handy · Mantené pulsado")
+        self.handy.setToolTip("Soltá para enviar el texto a Ollama local y escuchar la respuesta con Piper. Usa la memoria del chat según tu configuración.")
+        self.handy.pressed.connect(self._begin_handy)
+        self.handy.released.connect(self._end_handy)
         self.review_button = QPushButton("Revisar voz")
         self.review_button.clicked.connect(self.review_engine)
         self.stop_button = QPushButton("Detener audio")
@@ -201,6 +209,7 @@ class VoicePanel(QWidget):
         self.quality.currentIndexChanged.connect(self._quality_changed)
         settings.addWidget(QLabel("Voz:"))
         settings.addWidget(self.quality)
+        settings.addWidget(self.handy)
         settings.addWidget(self.review_button)
         settings.addWidget(self.state)
         settings.addStretch()
@@ -215,7 +224,11 @@ class VoicePanel(QWidget):
         self.read.setEnabled(active)
         self.mic.setEnabled(active)
         self.devices.setEnabled(active and self.mic.isChecked() and not self._capturing)
-        self.record.setEnabled(active and self.ready and self.mic.isChecked() and self._worker is None)
+        self.record.setEnabled(active and self.ready and self.mic.isChecked() and self._worker is None and not self._handy_capture)
+        self.handy.setEnabled(active and (self._handy_capture or (
+            self.handy_available and self.ready and self.mic.isChecked() and self.read.isChecked()
+            and not self._capturing and self._worker is None
+        )))
         self.stop_button.setEnabled(active)
         self.review_button.setEnabled(active)
         self.quality.setEnabled(active)
@@ -300,11 +313,11 @@ class VoicePanel(QWidget):
         except (AudioError, RuntimeError):
             self.notice.emit("No se pudo cerrar el dispositivo anterior.")
 
-    def _launch(self, operation, value):
+    def _launch(self, operation, value, *, force_piper=False):
         self._job += 1
         lease = self.policy.begin("speech.transcribe" if operation == "stt" else "speech.synthesize")
         self._tts_started = time.monotonic()
-        job = SpeechJob(self._job, self.root, operation, value, backend="qwen" if operation == "tts" and self.prefer_natural and qwen_ready() else "piper")
+        job = SpeechJob(self._job, self.root, operation, value, backend="qwen" if operation == "tts" and not force_piper and self.prefer_natural and qwen_ready() else "piper")
         self._worker, self._lease = job, lease
         self._workers.add(job)
         job.result.connect(self._result)
@@ -313,7 +326,7 @@ class VoicePanel(QWidget):
         self.policy.publish(lease, job.start)
         self.refresh()
 
-    def speak(self, text):
+    def speak(self, text, *, force_piper=False):
         if not self.read.isChecked() or self.policy.state is not State.ACTIVE or self._capturing:
             return
         if not self.ready:
@@ -321,7 +334,7 @@ class VoicePanel(QWidget):
             return
         self.stop()
         try:
-            self._launch("tts", text)
+            self._launch("tts", text, force_piper=force_piper)
             self.state.setText("Preparando voz…")
         except Denied:
             return
@@ -330,23 +343,50 @@ class VoicePanel(QWidget):
         if self.policy.state is not State.ACTIVE or not self.mic.isChecked() or not self.ready:
             return
         try:
+            if self._handy_capture:
+                return
             if self._capturing:
                 self._finish_capture()
             else:
-                self.stop()
-                self.audio.begin_recording()
-                self._capturing = True
-                self._capture_started = time.monotonic()
-                self.state.setText("Micrófono activo · Máximo 30 s")
+                self._begin_capture()
         except (AudioError, Denied):
             self.notice.emit("No se pudo abrir el micrófono. Elegí otro dispositivo o revisá los permisos de Windows.")
         self.refresh()
 
+    def _begin_capture(self, *, handy=False):
+        self.stop()
+        self.audio.begin_recording()
+        self._capturing = True
+        self._handy_capture = handy
+        self._capture_started = time.monotonic()
+        self.state.setText("Micrófono activo · Máximo 30 s")
+
+    def _begin_handy(self):
+        if not self.handy.isEnabled() or self._capturing:
+            return
+        try:
+            self._begin_capture(handy=True)
+        except (AudioError, Denied):
+            self.notice.emit("No se pudo abrir el micrófono. Revisá el dispositivo o los permisos.")
+        self.refresh()
+
+    def _end_handy(self):
+        if not self._handy_capture:
+            return
+        try:
+            self._finish_capture()
+        except (AudioError, Denied):
+            self.stop()
+            self.notice.emit("No se pudo completar el turno de voz.")
+        self.refresh()
+
     def _finish_capture(self):
-        self._capturing = False
+        handy = self._handy_capture
+        self._capturing = self._handy_capture = False
         samples = self.audio.finish_recording()
         self.state.setText("Transcribiendo en esta PC…")
         self._launch("stt", samples)
+        self._handy_transcription_job = self._job if handy else None
 
     def _result(self, job, result):
         if job != self._job or self._lease is None:
@@ -361,8 +401,11 @@ class VoicePanel(QWidget):
         if result.get("op") == "stt":
             text = result.get("text", "").strip()
             if text:
-                self.transcript.emit(text)
-                self.notice.emit("Dictado listo. Revisalo y pulsá Enviar cuando quieras.")
+                if self._job == self._handy_transcription_job:
+                    self.handy_transcript.emit(text)
+                else:
+                    self.transcript.emit(text)
+                    self.notice.emit("Dictado listo. Revisalo y pulsá Enviar cuando quieras.")
             else:
                 self.notice.emit("No se detectaron palabras. Probá acercarte al micrófono.")
             self.state.setText("Dictado listo")
@@ -398,8 +441,12 @@ class VoicePanel(QWidget):
         try:
             if self._capturing:
                 if not self.audio.recording or time.monotonic() - self._capture_started >= 30:
-                    self._finish_capture()
-                    self.refresh()
+                    if self._handy_capture:
+                        self.stop()
+                        self.notice.emit("Se alcanzó el límite de Handy. Soltá y probá con un turno más corto.")
+                    else:
+                        self._finish_capture()
+                        self.refresh()
             elif self.read.isChecked() and not self.audio.playing and self._queue:
                 samples, rate = self._queue.pop(0)
                 self.audio.play_samples(samples, rate)
@@ -417,7 +464,8 @@ class VoicePanel(QWidget):
         self._job += 1
         self._lease = None
         self._queue.clear()
-        self._capturing = False
+        self._handy_transcription_job = None
+        self._capturing = self._handy_capture = False
         for worker in tuple(self._workers):
             worker.cancel()
         self.audio.cancel()

@@ -208,7 +208,7 @@ class PrivacyProfilesDialog(QDialog):
         self.status.setWordWrap(True)
         self.status.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.status)
-        warning = QLabel("Un perfil no autoriza cargos de API ni desbloquea recuerdos íntimos. El permiso de micrófono solo habilita Dictar; no inicia una captura. El programa sigue aplicando memoria OFF y modo privado.")
+        warning = QLabel("Un perfil no autoriza cargos de API ni desbloquea recuerdos íntimos. El permiso de micrófono habilita Dictar y Handy. La captura empieza al usar uno de esos botones. El programa sigue aplicando memoria OFF y modo privado.")
         warning.setWordWrap(True)
         warning.setStyleSheet("color:#9cb3c7; font-size:12px;")
         layout.addWidget(warning)
