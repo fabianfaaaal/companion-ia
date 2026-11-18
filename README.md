@@ -130,3 +130,6 @@ El código propio usa [Apache-2.0](LICENSE). Podés copiarlo y modificarlo bajo 
 Companion IA no cobra por su código; un proveedor externo puede facturar su API. Por ahora **no aceptamos contribuciones externas de código**.
 
 Gracias por acompañar esta etapa. Vamos construyendo la experiencia, una conversación y un hito a la vez. 💚
+
+## Android alpha
+El cliente de chat local se vincula por QR con Companion en Windows y usa Ollama en la PC. [Compilar y probar en Wi-Fi](android/README.md).

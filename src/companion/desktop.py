@@ -303,6 +303,29 @@ class Window(QMainWindow):
         self.chat_splitter.setStretchFactor(1, 1)
         self.chat_splitter.setSizes([245, 995])
         self.tabs.addTab(self.chat_splitter, "Conversación")
+        from companion.phone_bridge import PhoneBridge
+        from PySide6.QtWidgets import QVBoxLayout, QLineEdit
+        self._phone_bridge_type = PhoneBridge
+        self._phone_bridge = None
+        self._phone_request = None
+        self._phone_history = []
+        phone_panel = QWidget()
+        layout = QVBoxLayout(phone_panel)
+        self._phone_toggle = QPushButton("Habilitar chat Android")
+        self._phone_toggle.clicked.connect(self._toggle_phone)
+        self._phone_code = QLineEdit()
+        self._phone_code.setPlaceholderText("IPv4 de esta PC")
+        self._phone_qr = QLabel()
+        self._phone_status = QLabel("Desconectado")
+        layout.addWidget(self._phone_toggle)
+        layout.addWidget(self._phone_code)
+        layout.addWidget(self._phone_qr)
+        layout.addWidget(self._phone_status)
+        layout.addStretch()
+        self.tabs.addTab(phone_panel, "Android")
+        self._phone_timer = QTimer(self)
+        self._phone_timer.timeout.connect(self._receive_phone)
+        self._phone_timer.start(100)
         db_path = state_path.parent / "memory.sqlite"
         self.agenda_panel = AgendaPanel(self.policy, db_path, self)
         self.cinematheque = CinemathequePanel(self.policy, db_path, self)
@@ -1119,6 +1142,89 @@ class Window(QMainWindow):
             suffix = "Este modelo requiere razonamiento; la respuesta puede tardar más." if self._thinking.get(model) else "Perfil de respuesta sin razonamiento solicitado."
             self.status.setText("Motor local conectado. " + suffix)
 
+    def _toggle_phone(self):
+        if self._phone_bridge is not None:
+            self._stop_phone()
+            return
+        if self.policy.state is not State.ACTIVE:
+            return
+        try:
+            from ipaddress import IPv4Address
+            import qrcode
+            from PySide6.QtGui import QImage, QPixmap
+            host = str(IPv4Address(self._phone_code.text().strip()))
+            self._phone_bridge = self._phone_bridge_type(host)
+            matrix = qrcode.QRCode(box_size=1, border=4)
+            matrix.add_data(self._phone_bridge.qr)
+            rows = matrix.get_matrix()
+            image = QImage(len(rows), len(rows), QImage.Format.Format_RGB32)
+            for y, row in enumerate(rows):
+                for x, dark in enumerate(row):
+                    image.setPixel(x, y, 0xff000000 if dark else 0xffffffff)
+            self._phone_qr.setPixmap(QPixmap.fromImage(image).scaled(len(rows) * 5, len(rows) * 5))
+        except (OSError, ValueError, ImportError):
+            self._phone_status.setText("Revisa la IPv4, el puerto y las dependencias.")
+            return
+        self._phone_toggle.setText("Deshabilitar chat Android")
+        self._phone_code.setReadOnly(True)
+        self._phone_status.setText("Escaneá el QR desde Android en los próximos dos minutos.")
+
+    def _complete_phone(self, status, payload):
+        from concurrent.futures import InvalidStateError
+        if self._phone_request is not None:
+            _, future = self._phone_request
+            self._phone_request = None
+            try:
+                future.set_result((status, payload))
+            except InvalidStateError:
+                pass
+
+    def _stop_phone(self):
+        bridge, self._phone_bridge = self._phone_bridge, None
+        if bridge is None:
+            return
+        if self._phone_request is not None:
+            self._cancel_worker()
+        self._phone_history.clear()
+        self._phone_qr.clear()
+        self._phone_code.setReadOnly(False)
+        self._phone_toggle.setText("Habilitar chat Android")
+        self._phone_status.setText("Desconectado")
+        bridge.close()
+
+    def _receive_phone(self):
+        from queue import Empty
+        if self._phone_bridge is not None and self._phone_bridge.session:
+            self._phone_qr.clear()
+        if self._phone_bridge is None:
+            return
+        if self.policy.state is not State.ACTIVE:
+            self._stop_phone()
+            return
+        try:
+            text, future = self._phone_bridge.inbox.get_nowait()
+        except Empty:
+            return
+        if future.cancelled():
+            return
+        if self._worker is not None or not self.models.currentText():
+            future.set_result((409, {"error": "Companion está ocupado o falta un modelo local."}))
+            return
+        self._phone_request = (text, future)
+        self._pending_route = None
+        self._pending_remote_messages = []
+        self._pending_depth = "brief"
+        messages = [
+            {"role": "system", "content": "Sos Companion. Respondé en el idioma del usuario."},
+            *self._phone_history,
+            {"role": "user", "content": text},
+        ]
+        self._start("chat", messages, handy=True)
+        if self._worker is None:
+            self._complete_phone(503, {"error": "Chat local no disponible."})
+        else:
+            self._phone_status.setText("Generando respuesta para Android…")
+
     def send_message(self):
         self._send_message(self.input.toPlainText().strip())
 
@@ -1234,6 +1340,19 @@ class Window(QMainWindow):
         if job != self._job or self._lease is None:
             return
         try:
+            if self._phone_request is not None and "answer" in result:
+                def deliver():
+                    text, future = self._phone_request
+                    answer = result["answer"]
+                    if self.policy.state is State.ACTIVE and not future.cancelled():
+                        self._phone_history = (self._phone_history + [
+                            {"role": "user", "content": text},
+                            {"role": "assistant", "content": answer},
+                        ])[-12:]
+                        self._complete_phone(200, {"answer": answer})
+                        self._phone_status.setText("Respuesta enviada a Android.")
+                self.policy.publish(self._lease, deliver)
+                return
             self.policy.publish(self._lease, lambda: self._apply_result(result))
             if "answer" in result:
                 if job == self._handy_job:
@@ -1306,6 +1425,7 @@ class Window(QMainWindow):
     def _finished(self, worker):
         if self._worker is worker:
             self._worker = None
+            self._complete_phone(503, {"error": "Ollama no completó la respuesta."})
             if self._response_started is not None:
                 self._response_started = None
                 self.response_time.setText("Respuesta: descartada")
@@ -1314,6 +1434,7 @@ class Window(QMainWindow):
         self._refresh()
 
     def _cancel_worker(self):
+        self._complete_phone(503, {"error": "Solicitud detenida."})
         if self._response_started is not None:
             self._response_started = None
             self.response_time.setText("Respuesta: cancelada")
@@ -1328,6 +1449,7 @@ class Window(QMainWindow):
         self.policy.revoke("remote.request")
 
     def _stop_for_private(self):
+        self._stop_phone()
         if self._browser_dialog is not None:
             self._browser_dialog.clear_private()
         self._cancel_worker()
@@ -1452,6 +1574,7 @@ class Window(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+        self._stop_phone()
         self._cancel_worker()
         try:
             self.voice_panel.stop_and_wait()
