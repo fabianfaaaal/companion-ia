@@ -9,7 +9,7 @@ import time
 from uuid import uuid4
 from pathlib import Path
 
-from PySide6.QtCore import QLockFile, QStandardPaths, QThread, QTimer, QUrl, Signal, Qt
+from PySide6.QtCore import QLockFile, QStandardPaths, QThread, QTimer, QUrl, Signal, Qt, QProcess, QProcessEnvironment
 from PySide6.QtGui import QDesktopServices, QFont, QFontDatabase
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QTabWidget,
@@ -28,6 +28,14 @@ from companion.environment_panel import EnvironmentPanel
 from companion.web_panel import WebPanel
 from companion.session import requested_tool
 from companion.preferences import Preferences
+from companion.onboarding import SetupDialog, SetupState
+from companion.context_panel import ContextPanel
+from companion.archive_panel import ArchivePanel
+from companion.archive_transfer import apply_pending_restore, ArchiveError
+from companion.setup_panel import SetupPanel
+from companion.voice_paths import engine_root, engine_ready
+from companion.storage_location import StorageLocation, StorageLocationError
+from companion.storage_dialog import StorageLocationDialog
 from companion.provider_panel import ProviderPanel
 from companion.personality_panel import PersonalityPanel
 from companion.history_panel import HistoryPanel
@@ -137,6 +145,7 @@ class Window(QMainWindow):
         self.last_messages: list[dict] = []
         self._worker = None
         self._job = 0
+        self._handy_job = None
         self._lease = None
         self._pending_user = ""
         self._pending_route = None
@@ -145,6 +154,12 @@ class Window(QMainWindow):
         self._response_started = None
         self._preferences = Preferences(state_path.parent / "preferences.json")
         self._preference_values = None
+        self._setup = SetupState(state_path.parent / "onboarding.json", self.policy)
+        self._require_setup = False
+        self._startup_done = False
+        self._restart_requested = False
+        self._restart_state_dir = state_path.parent
+        self._storage_location = None
         self._current_conversation = None
         self._session_display = []
         self._draft_chat_key = "draft:" + uuid4().hex
@@ -204,16 +219,27 @@ class Window(QMainWindow):
         row.addWidget(self.mode)
         row.addWidget(self.models, 1)
         row.addWidget(self.connect_button)
+        self.start_engine_button = QPushButton("Iniciar Ollama")
+        self.start_engine_button.setToolTip("Inicia el motor local instalado. Alternativa en PowerShell: ollama serve; después pulsá Detectar Ollama.")
+        self.start_engine_button.clicked.connect(lambda: self.engine_setup.start("start_chat"))
+        row.addWidget(self.start_engine_button)
         layout.addLayout(row)
         self.status = QLabel("Preparada para detectar el motor local.")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
+        engine_help = QLabel("Podés iniciar el motor desde Iniciar Ollama. Alternativa en PowerShell: ollama serve → Detectar Ollama.")
+        engine_help.setObjectName("muted")
+        engine_help.setWordWrap(True)
+        engine_help.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        layout.addWidget(engine_help)
         self.voice_panel = VoicePanel(self.policy, self)
         self.voice_panel.transcript.connect(self._dictated)
+        self.voice_panel.handy_transcript.connect(self._send_handy)
         self.voice_panel.notice.connect(self.status.setText)
         layout.addWidget(self.voice_panel)
         self.transcript = ChatView()
         self.transcript.setReadOnly(True)
+        self.transcript.learning_requested.connect(self._propose_learning)
         self.transcript.setAccessibleName("Conversación de esta sesión")
         self.transcript.setPlaceholderText("Tu conversación aparecerá acá. El guardado sigue el perfil y el modo privado.")
         layout.addWidget(self.transcript, 1)
@@ -252,8 +278,8 @@ class Window(QMainWindow):
         self.metrics.setWordWrap(True)
         layout.addWidget(self.metrics)
         footer = QHBoxLayout()
-        setup = QPushButton("Instalar / abrir Ollama")
-        setup.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://ollama.com/download/windows")))
+        setup = QPushButton("Preparar aplicación y motores")
+        setup.clicked.connect(self.open_engine_setup)
         footer.addWidget(setup)
         functions = QPushButton("Funciones reales")
         functions.clicked.connect(lambda: QMessageBox.information(self, "Funciones de esta versión", capabilities(self.memory_panel.enabled) + "\n\nVoz y dictado requieren habilitar sus controles. El micrófono no escucha por sí solo."))
@@ -277,6 +303,29 @@ class Window(QMainWindow):
         self.chat_splitter.setStretchFactor(1, 1)
         self.chat_splitter.setSizes([245, 995])
         self.tabs.addTab(self.chat_splitter, "Conversación")
+        from companion.phone_bridge import PhoneBridge
+        from PySide6.QtWidgets import QVBoxLayout, QLineEdit
+        self._phone_bridge_type = PhoneBridge
+        self._phone_bridge = None
+        self._phone_request = None
+        self._phone_history = []
+        phone_panel = QWidget()
+        layout = QVBoxLayout(phone_panel)
+        self._phone_toggle = QPushButton("Habilitar chat Android")
+        self._phone_toggle.clicked.connect(self._toggle_phone)
+        self._phone_code = QLineEdit()
+        self._phone_code.setPlaceholderText("IPv4 de esta PC")
+        self._phone_qr = QLabel()
+        self._phone_status = QLabel("Desconectado")
+        layout.addWidget(self._phone_toggle)
+        layout.addWidget(self._phone_code)
+        layout.addWidget(self._phone_qr)
+        layout.addWidget(self._phone_status)
+        layout.addStretch()
+        self.tabs.addTab(phone_panel, "Android")
+        self._phone_timer = QTimer(self)
+        self._phone_timer.timeout.connect(self._receive_phone)
+        self._phone_timer.start(100)
         db_path = state_path.parent / "memory.sqlite"
         self.agenda_panel = AgendaPanel(self.policy, db_path, self)
         self.cinematheque = CinemathequePanel(self.policy, db_path, self)
@@ -285,6 +334,13 @@ class Window(QMainWindow):
         self.provider_panel = ProviderPanel(self.policy, state_path.parent, self)
         self.personality = PersonalityPanel(self.policy, state_path.parent, self)
         self.histories = HistoryPanel(self.policy, db_path, self)
+        self.context_cards = ContextPanel(self.policy, state_path.parent, self)
+        self.archive_panel = ArchivePanel(self.policy, state_path.parent, self)
+        self.engine_setup = SetupPanel(self.policy, state_path.parent, self)
+        self.archive_panel.restart_required.connect(self._restart_for_restore)
+        self.engine_setup.prepared.connect(self._engines_prepared)
+        self.voice_panel.review_button.clicked.disconnect(self.voice_panel.review_engine)
+        self.voice_panel.review_button.clicked.connect(self.open_engine_setup)
         self.name.setText(self.personality.context().get("name", "Amiga"))
         self.memory_window = QDialog(self, Qt.WindowType.Window)
         self.memory_window.setWindowTitle("Memoteca · Companion IA")
@@ -308,7 +364,8 @@ class Window(QMainWindow):
         for panel, label in ((self.agenda_panel, "Agenda"), (self.memory_launcher, "Memoteca"),
                              (self.web_panel, "Web"), (self.environment, "Entorno"),
                              (self.provider_panel, "Proveedores"), (self.personality, "Personalidad"),
-                             (self.histories, "Historiales")):
+                             (self.histories, "Historiales"), (self.context_cards, "Fichas y aprendizajes"),
+                             (self.archive_panel, "Copias y restauración"), (self.engine_setup, "Preparar motores")):
             self.tabs.addTab(panel, label)
             if hasattr(panel, "notice"):
                 panel.notice.connect(self.status.setText)
@@ -318,6 +375,7 @@ class Window(QMainWindow):
         self.environment.changed.connect(self._discard_derived_context)
         self.provider_panel.changed.connect(self._discard_derived_context)
         self.histories.changed.connect(self._discard_derived_context)
+        self.context_cards.changed.connect(self._discard_derived_context)
         self.personality.applied.connect(self._personality_applied)
         self.alarm_audio = AudioIO(self.policy, playback_operation="alarm.playback")
         self.setCentralWidget(self.tabs)
@@ -329,6 +387,9 @@ class Window(QMainWindow):
         self.profile_button = QPushButton("Perfiles de privacidad")
         self.profile_button.clicked.connect(self.show_privacy_profiles)
         toolbar.addWidget(self.profile_button)
+        self.setup_button = QPushButton("Configuración inicial")
+        self.setup_button.clicked.connect(self.configure_startup)
+        toolbar.addWidget(self.setup_button)
         self.browser_button = QPushButton("Chat web sin API")
         self.browser_button.clicked.connect(self.open_browser_chat)
         toolbar.addWidget(self.browser_button)
@@ -361,7 +422,8 @@ class Window(QMainWindow):
         if auto_connect and self.policy.state is State.ACTIVE:
             QTimer.singleShot(200, self.detect_models)
 
-    def enable_preferences(self):
+    def enable_preferences(self, *, require_setup=False):
+        self._require_setup = require_setup
         self._preference_values = self._preferences.load()
         controls = {
             "memory": self.memory_panel.toggle, "voice": self.voice_panel.read,
@@ -377,6 +439,98 @@ class Window(QMainWindow):
         self._apply_preferences()
         self._restore_active_profile()
 
+    def start_welcome(self):
+        if self._startup_done or self.policy.state is not State.ACTIVE:
+            return
+        self._startup_done = True
+        pending = not self._setup.complete()
+        text = ("¡Hola! Soy tu companion. Antes de empezar, elegí qué querés guardar y cómo usar la voz."
+                if pending else "¡Hola! Qué bueno verte. Estoy acá para acompañarte. ¿Cómo seguimos hoy?")
+        # A startup notice is UI only: never a stored message or LLM request.
+        self.transcript.append_message("notice", text)
+        self.voice_panel.speak(text)
+        if pending:
+            self.configure_startup()
+        if self.policy.state is State.ACTIVE and ((self.voice_panel.read.isChecked() and not self.voice_panel.ready)
+                or (not self.models.count() and self._worker is None)):
+            self.open_engine_setup()
+
+    def configure_startup(self):
+        if self.policy.state is not State.ACTIVE:
+            return
+        dialog = SetupDialog(self._preference_values or self._preferences.load(), self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or self.policy.state is not State.ACTIVE:
+            return
+        options = dialog.options()
+        flags = self._privacy_flags()
+        flags.update({key: options[key] for key in PROFILE_FLAGS if key in options})
+        try:
+            self.voice_panel.stop_and_wait()
+            self.policy.grant("setup.write")
+            lease = self.policy.begin("setup.write")
+            def save_setup():
+                self._preferences.save(options)
+                temporary = self._profile_flags_path.with_suffix(".tmp")
+                temporary.write_text(json.dumps(validate_flags(flags)), encoding="utf-8")
+                temporary.replace(self._profile_flags_path)
+            self.policy.publish(lease, save_setup)
+            self._setup.finish()
+        except (OSError, ValueError, Denied, AudioError, RuntimeError):
+            self.status.setText("No se pudo guardar la configuración. Reintentá desde Configuración inicial.")
+            return
+        self._preference_values = options
+        # The initial setup explicitly replaces a previously selected profile.
+        self.apply_privacy_profile(flags, persist=False)
+        self._apply_preferences()
+        self.status.setText("Configuración lista. " + ("Los próximos mensajes se guardarán en esta PC."
+                            if self.memory_panel.enabled else "Continuamos con chat temporal, sin guardar."))
+
+    def open_engine_setup(self):
+        if self.policy.state is not State.ACTIVE:
+            return
+        self.tabs.setCurrentWidget(self.engine_setup)
+
+    def _engines_prepared(self):
+        if self.policy.state is not State.ACTIVE:
+            return
+        root = engine_root()
+        self.voice_panel.root = root
+        self.voice_panel.ready = engine_ready(root)
+        self.voice_panel.refresh()
+        self.detect_models()
+
+    def _restart_for_restore(self):
+        if self.policy.state is not State.ACTIVE:
+            return
+        self._restart_requested = True
+        if self.close():
+            QApplication.instance().quit()
+        else:
+            self._restart_requested = False
+
+    def _propose_learning(self, text, role):
+        if self.policy.state is not State.ACTIVE or self._worker is not None:
+            return
+        self.tabs.setCurrentWidget(self.context_cards)
+        source = ("Fragmento de mensaje del usuario; por confirmar" if role == "user"
+                  else "Respuesta del asistente; afirmación no verificada")
+        self.context_cards.propose_text(text, source_ref=source)
+
+    def _retrieve_context_cards(self, text):
+        result = self.context_cards.retrieve(text)
+        selections = {}
+        for ambiguity in result["ambiguities"]:
+            candidates = ambiguity["candidates"]
+            labels = [item["title"] + " · " + item["id"][:8] for item in candidates]
+            label, accepted = QInputDialog.getItem(self, "¿A qué ficha te referís?",
+                "La clave «" + ambiguity["keyword"] + "» tiene varios significados:", labels, 0, False)
+            if not accepted or self.policy.state is not State.ACTIVE:
+                return None
+            selections[ambiguity["keyword"]] = candidates[labels.index(label)]["id"]
+        if selections:
+            result = self.context_cards.retrieve(text, selections=selections)
+        return result["matches"]
+
     def _remember_option(self, key, checked):
         if self._preference_values is None or self.policy.state is not State.ACTIVE:
             return
@@ -390,6 +544,10 @@ class Window(QMainWindow):
         if self._preference_values is None or self.policy.state is not State.ACTIVE:
             return
         options = self._preference_values
+        if self._require_setup and not self._setup.complete():
+            options = dict.fromkeys(options, False)
+            options["voice"] = self._preference_values["voice"]
+            options["natural_voice"] = self._preference_values["natural_voice"]
         self.memory_panel.set_enabled(options["memory"])
         self.voice_panel.quality.setCurrentIndex(0 if options["natural_voice"] else 1)
         self.voice_panel.prefer_natural = options["natural_voice"]
@@ -402,7 +560,7 @@ class Window(QMainWindow):
         self.web_panel.use.setChecked(options["web_context"])
         self.defaults_note.setText(
             "Inicio con funciones activadas; podés desmarcarlas. Memoria local sin cifrar; "
-            "micrófono solo con Dictar. Entorno observa títulos en RAM; Web envía consultas al pulsar Buscar.")
+            "micrófono al usar Dictar o Handy. Entorno observa títulos en RAM; Web envía consultas al pulsar Buscar.")
         self._refresh()
 
     def _insert_emoji(self, text):
@@ -467,7 +625,7 @@ class Window(QMainWindow):
         layout.addWidget(title)
         info = QLabel("Esta es la carpeta real de datos de esta instalación. Contiene el archivo SQLite "
                       "de conversaciones, notas, agenda e historiales, y otros archivos de configuración. "
-                      "Las fotos pueden referenciar archivos originales fuera de esta carpeta. "
+                      "Las fotos importadas y sus miniaturas se conservan en media. "
                       "Los modelos de Ollama y voz se guardan por separado.")
         info.setWordWrap(True)
         layout.addWidget(info)
@@ -476,11 +634,15 @@ class Window(QMainWindow):
         layout.addWidget(location)
         caution = QLabel("El archivo aún no está cifrado. No compartas esta carpeta: puede contener "
                          "datos personales y credenciales protegidas de tus proveedores. "
-                         "Cerrá la app antes de copiarla como respaldo; no edites SQLite manualmente. "
+                         "Para respaldar o restaurar sin editar archivos, usá Copias y restauración. "
                          "Para leer o borrar recuerdos, usá las pestañas del programa.")
         caution.setWordWrap(True)
         layout.addWidget(caution)
         buttons = QHBoxLayout()
+        choose = QPushButton("Elegir otro archivo personal")
+        choose.setEnabled(self._storage_location is not None)
+        choose.clicked.connect(lambda: (dialog.accept(), self.change_archive_location()))
+        buttons.addWidget(choose)
         copy = QPushButton("Copiar ubicación")
         copy.clicked.connect(lambda: QApplication.clipboard().setText(str(self._data_directory)))
         open_folder = QPushButton("Abrir carpeta")
@@ -491,6 +653,44 @@ class Window(QMainWindow):
             buttons.addWidget(button)
         layout.addLayout(buttons)
         dialog.exec()
+
+    def change_archive_location(self):
+        if self.policy.state is not State.ACTIVE or self._worker is not None or self._storage_location is None:
+            return
+        dialog = StorageLocationDialog(self._storage_location, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted or self.policy.state is not State.ACTIVE:
+            return
+        target = dialog.chosen_path
+        previous_locator = self._storage_location.path.read_bytes() if self._storage_location.path.exists() else None
+        if target == self._data_directory:
+            return
+        # No content is moved. The previous archive remains available for export.
+        try:
+            self._cancel_worker()
+            self.voice_panel.stop_and_wait()
+            self.archive_panel.stop()
+            self.engine_setup.stop_and_wait()
+            self.policy.grant("storage.location")
+            lease = self.policy.begin("storage.location")
+            self.policy.publish(lease, lambda: self._storage_location.select(target))
+        except (StorageLocationError, OSError, Denied, RuntimeError, AudioError):
+            self.status.setText("No se cambió el archivo personal. Revisá la carpeta y reintentá.")
+            self._refresh()
+            return
+        self._restart_state_dir = target
+        self._restart_for_restore()
+        if not self._restart_requested:
+            # A user who cancelled closing keeps the previous active location.
+            try:
+                if previous_locator is None:
+                    self._storage_location.path.unlink(missing_ok=True)
+                else:
+                    temporary = self._storage_location.path.with_suffix(".tmp")
+                    temporary.write_bytes(previous_locator)
+                    temporary.replace(self._storage_location.path)
+            except (OSError, StorageLocationError):
+                self.status.setText("El archivo actual sigue abierto; la ubicación elegida se usará en la próxima apertura.")
+            self._refresh()
 
     def open_data_directory(self):
         if self.policy.state is not State.ACTIVE or not self.memory_panel.enabled:
@@ -524,6 +724,8 @@ class Window(QMainWindow):
             self.apply_privacy_profile(dialog.selected_flags)
 
     def _restore_active_profile(self):
+        if self._require_setup and not self._setup.complete():
+            return
         if self.policy.state is not State.ACTIVE:
             return
         self.policy.grant("profiles.read")
@@ -683,7 +885,7 @@ class Window(QMainWindow):
         self.transcript.clear()
         self.input.clear()
         self.session_note.setText("Guardado automático de conversaciones activo · Contexto según perfil" if enabled
-                                  else "Memoria apagada · Chat temporal · Micrófono solo al pulsar Dictar")
+                                  else "Memoria apagada · Chat temporal · Micrófono por botón")
         self.saving_badge.setText("  Guardado local activo  " if enabled else "  Chat temporal · sin guardar  ")
         self.status.setText("Guardado automático de mensajes habilitado." if enabled else "Memoria desactivada. Las notas existentes se conservan, pero no se recuperan.")
         self._refresh_conversations()
@@ -866,17 +1068,24 @@ class Window(QMainWindow):
         self.provider_panel.refresh(active, busy)
         self.personality.refresh(active, busy)
         self.histories.refresh(self.memory_panel.enabled, busy)
+        self.context_cards.set_enabled(self.memory_panel.enabled)
+        self.context_cards.refresh(active, busy)
+        self.archive_panel.refresh(self.memory_panel.enabled, busy)
+        self.engine_setup.refresh(active, busy)
         self.global_privacy.setText("Reactivar" if self.policy.state is State.PRIVATE else "Modo privado")
         self.global_privacy.setEnabled(self.policy.state in (State.ACTIVE, State.PRIVATE))
         self.global_status.setText("  Modo privado activo" if not active else "  Herramientas disponibles en las pestañas")
+        self.voice_panel.handy_available = active and not busy and bool(self.models.currentText())
         self.voice_panel.refresh()
         self.models.setEnabled(chatting and not busy)
         self.connect_button.setEnabled(chatting and not busy)
+        self.start_engine_button.setEnabled(active and not busy)
         self.fresh.setEnabled(chatting and not busy)
         self.emoji.setEnabled(chatting and not busy)
         self.browser_button.setEnabled(active and not busy)
         self.data_button.setEnabled(active and self.memory_panel.enabled and not busy)
         self.profile_button.setEnabled(active and not busy)
+        self.setup_button.setEnabled(active and not busy)
         self.sidebar.setEnabled(active)
         self.input.setEnabled(chatting and not busy)
         self.send.setEnabled(chatting and not busy and (self.models.count() > 0 or self.provider_panel.account.currentData() is not None))
@@ -889,7 +1098,7 @@ class Window(QMainWindow):
         elif self.policy.state is State.ERROR:
             self.status.setText("No se pudo confirmar el estado de privacidad. El programa permanece bloqueado.")
 
-    def _start(self, kind, messages=None):
+    def _start(self, kind, messages=None, *, handy=False):
         if self._worker is not None:
             return
         try:
@@ -897,8 +1106,9 @@ class Window(QMainWindow):
         except Denied:
             return
         self._job += 1
+        self._handy_job = self._job if handy else None
         if kind == "chat":
-            route = None if self.policy.state is State.PRIVATE else self._pending_route
+            route = None if handy or self.policy.state is State.PRIVATE else self._pending_route
             remote_lease = None
             if route and route.get("allowed") and not route.get("error"):
                 self.policy.grant("remote.request")
@@ -906,6 +1116,8 @@ class Window(QMainWindow):
             worker = InteractionWorker(self._job, self.models.currentText(), messages,
                 self._pending_remote_messages, route, self._pending_depth, self.mode.currentText(),
                 self.policy, lease, remote_lease)
+            if handy:
+                worker.local_max_tokens = 160
             worker.stage.connect(self._worker_stage)
             worker.snapshot.connect(self._worker_snapshot)
         else:
@@ -930,10 +1142,104 @@ class Window(QMainWindow):
             suffix = "Este modelo requiere razonamiento; la respuesta puede tardar más." if self._thinking.get(model) else "Perfil de respuesta sin razonamiento solicitado."
             self.status.setText("Motor local conectado. " + suffix)
 
+    def _toggle_phone(self):
+        if self._phone_bridge is not None:
+            self._stop_phone()
+            return
+        if self.policy.state is not State.ACTIVE:
+            return
+        try:
+            from ipaddress import IPv4Address
+            import qrcode
+            from PySide6.QtGui import QImage, QPixmap
+            host = str(IPv4Address(self._phone_code.text().strip()))
+            self._phone_bridge = self._phone_bridge_type(host)
+            matrix = qrcode.QRCode(box_size=1, border=4)
+            matrix.add_data(self._phone_bridge.qr)
+            rows = matrix.get_matrix()
+            image = QImage(len(rows), len(rows), QImage.Format.Format_RGB32)
+            for y, row in enumerate(rows):
+                for x, dark in enumerate(row):
+                    image.setPixel(x, y, 0xff000000 if dark else 0xffffffff)
+            self._phone_qr.setPixmap(QPixmap.fromImage(image).scaled(len(rows) * 5, len(rows) * 5))
+        except (OSError, ValueError, ImportError):
+            self._phone_status.setText("Revisa la IPv4, el puerto y las dependencias.")
+            return
+        self._phone_toggle.setText("Deshabilitar chat Android")
+        self._phone_code.setReadOnly(True)
+        self._phone_status.setText("Escaneá el QR desde Android en los próximos dos minutos.")
+
+    def _complete_phone(self, status, payload):
+        from concurrent.futures import InvalidStateError
+        if self._phone_request is not None:
+            _, future = self._phone_request
+            self._phone_request = None
+            try:
+                future.set_result((status, payload))
+            except InvalidStateError:
+                pass
+
+    def _stop_phone(self):
+        bridge, self._phone_bridge = self._phone_bridge, None
+        if bridge is None:
+            return
+        if self._phone_request is not None:
+            self._cancel_worker()
+        self._phone_history.clear()
+        self._phone_qr.clear()
+        self._phone_code.setReadOnly(False)
+        self._phone_toggle.setText("Habilitar chat Android")
+        self._phone_status.setText("Desconectado")
+        bridge.close()
+
+    def _receive_phone(self):
+        from queue import Empty
+        if self._phone_bridge is not None and self._phone_bridge.session:
+            self._phone_qr.clear()
+        if self._phone_bridge is None:
+            return
+        if self.policy.state is not State.ACTIVE:
+            self._stop_phone()
+            return
+        try:
+            text, future = self._phone_bridge.inbox.get_nowait()
+        except Empty:
+            return
+        if future.cancelled():
+            return
+        if self._worker is not None or not self.models.currentText():
+            future.set_result((409, {"error": "Companion está ocupado o falta un modelo local."}))
+            return
+        self._phone_request = (text, future)
+        self._pending_route = None
+        self._pending_remote_messages = []
+        self._pending_depth = "brief"
+        messages = [
+            {"role": "system", "content": "Sos Companion. Respondé en el idioma del usuario."},
+            *self._phone_history,
+            {"role": "user", "content": text},
+        ]
+        self._start("chat", messages, handy=True)
+        if self._worker is None:
+            self._complete_phone(503, {"error": "Chat local no disponible."})
+        else:
+            self._phone_status.setText("Generando respuesta para Android…")
+
     def send_message(self):
+        self._send_message(self.input.toPlainText().strip())
+
+    def _send_handy(self, text):
+        if self.policy.state is not State.ACTIVE:
+            return
+        if self._worker is not None or not self.models.currentText():
+            self._dictated(text)
+            self.status.setText("Ollama no está disponible para Handy. El texto quedó en el editor.")
+            return
+        self._send_message(text, handy=True)
+
+    def _send_message(self, text, *, handy=False):
         if self._worker is not None or not self._chat_allowed():
             return
-        text = self.input.toPlainText().strip()
         if not text or len(text) > 4000:
             self.status.setText("Escribí entre 1 y 4000 caracteres.")
             return
@@ -950,7 +1256,7 @@ class Window(QMainWindow):
             self._append(text, role="user", label="Vos")
             self._start("chat", messages)
             return
-        tool = requested_tool(text)
+        tool = None if handy else requested_tool(text)
         if tool == "agenda":
             self.tabs.setCurrentWidget(self.agenda_panel)
             self.agenda_panel.draft_text = text
@@ -961,7 +1267,7 @@ class Window(QMainWindow):
             self.open_memoteca()
         elif tool == "environment":
             self.tabs.setCurrentWidget(self.environment)
-        reply = direct_reply(text, memory_enabled=self.memory_panel.enabled)
+        reply = None if handy else direct_reply(text, memory_enabled=self.memory_panel.enabled)
         if reply is not None:
             self.input.clear()
             self._append("Vos\n" + text + "\n")
@@ -975,47 +1281,84 @@ class Window(QMainWindow):
             self._refresh()
             return
         try:
+            cards = self._retrieve_context_cards(text)
+            if cards is None:
+                if handy:
+                    self._dictated(text)
+                self._response_started = None
+                self.response_time.setText("Respuesta: no enviada")
+                self.status.setText("Mensaje conservado. Elegí una ficha o reformulá la clave para continuar.")
+                return
             notes = self.memory_panel.retrieve(text)
             photos = self.cinematheque.retrieve(text)
             imports = self.histories.retrieve(text)
             def distribute(groups):
                 return [group[index] for index in range(3) for group in groups if index < len(group)]
-            self._last_sources = distribute([notes, photos, imports])
+            archived_memories = distribute([notes, photos, imports])
+            self._last_sources = cards + archived_memories
             temporary_context = self.web_panel.context() + self.environment.context()
-            self._pending_depth = resolve_depth(text, self.provider_panel.depth.currentText())
+            self._pending_depth = "brief" if handy else resolve_depth(text, self.provider_panel.depth.currentText())
             personality = self.personality.context()
             messages = build_messages(self.history, text, self.name.text(), self.mode.currentText(),
-                memories=self._last_sources, memory_enabled=self.memory_panel.enabled,
-                extra_context=temporary_context, personality=personality, depth=self._pending_depth)
-            self._pending_route = self.provider_panel.request()
-            outbound_memories = distribute([
-                notes + photos if self.provider_panel.share_memory.isChecked() else [],
-                imports if self.provider_panel.share_imports.isChecked() else []])
-            self._pending_remote_messages = build_messages(
-                self.history if self.provider_panel.share_history.isChecked() else [],
-                text, self.name.text(), self.mode.currentText(),
-                memories=outbound_memories, memory_enabled=self.memory_panel.enabled,
-                extra_context=temporary_context if self.provider_panel.share_environment.isChecked() else [],
-                personality=personality, depth=self._pending_depth)
+                memories=archived_memories, memory_enabled=self.memory_panel.enabled,
+                extra_context=temporary_context, personality=personality, depth=self._pending_depth, context_cards=cards)
+            if handy:
+                messages[0]["content"] += "\nPara esta charla de voz, contestá en una o dos frases breves en español."
+            self._pending_route = None
+            self._pending_remote_messages = []
+            if not handy:
+                self._pending_route = self.provider_panel.request()
+                outbound_memories = distribute([
+                    notes + photos if self.provider_panel.share_memory.isChecked() else [],
+                    imports if self.provider_panel.share_imports.isChecked() else []])
+                self._pending_remote_messages = build_messages(
+                    self.history if self.provider_panel.share_history.isChecked() else [],
+                    text, self.name.text(), self.mode.currentText(),
+                    memories=outbound_memories, memory_enabled=self.memory_panel.enabled,
+                    extra_context=temporary_context if self.provider_panel.share_environment.isChecked() else [],
+                    personality=personality, depth=self._pending_depth,
+                    context_cards=cards if self.provider_panel.share_memory.isChecked() else [])
         except (ValueError, MemoryStoreError, Denied) as exc:
+            if handy:
+                self._dictated(text)
             self._response_started = None
             self.response_time.setText("Respuesta: no enviada")
             self.status.setText(str(exc))
             return
         self.last_messages = self._pending_remote_messages if self._pending_route and self._pending_route.get("allowed") else messages
         self._pending_user = text
-        self.input.clear()
+        if not handy:
+            self.input.clear()
         self._append("Vos\n" + text + "\n")
         self.status.setText("Preparando respuesta final… Podés detenerla o activar modo privado.")
-        self._start("chat", messages)
+        if handy:
+            self._start("chat", messages, handy=True)
+        else:
+            self._start("chat", messages)
 
     def _result(self, job, result):
         if job != self._job or self._lease is None:
             return
         try:
+            if self._phone_request is not None and "answer" in result:
+                def deliver():
+                    text, future = self._phone_request
+                    answer = result["answer"]
+                    if self.policy.state is State.ACTIVE and not future.cancelled():
+                        self._phone_history = (self._phone_history + [
+                            {"role": "user", "content": text},
+                            {"role": "assistant", "content": answer},
+                        ])[-12:]
+                        self._complete_phone(200, {"answer": answer})
+                        self._phone_status.setText("Respuesta enviada a Android.")
+                self.policy.publish(self._lease, deliver)
+                return
             self.policy.publish(self._lease, lambda: self._apply_result(result))
             if "answer" in result:
-                self.voice_panel.speak(result["answer"])
+                if job == self._handy_job:
+                    self.voice_panel.speak(result["answer"], force_piper=True)
+                else:
+                    self.voice_panel.speak(result["answer"])
         except Denied:
             return
 
@@ -1034,7 +1377,7 @@ class Window(QMainWindow):
             self.models.blockSignals(False)
             self._thinking = result["thinking"]
             if not result["models"]:
-                self.status.setText("Ollama respondió, pero no hay modelos locales verificables. Instalá uno y volvé a detectar.")
+                self.status.setText("Ollama respondió, pero no hay modelos locales verificables. Abrí Preparar motores y aceptá la preparación recomendada.")
             else:
                 self._model_changed()
             return
@@ -1082,6 +1425,7 @@ class Window(QMainWindow):
     def _finished(self, worker):
         if self._worker is worker:
             self._worker = None
+            self._complete_phone(503, {"error": "Ollama no completó la respuesta."})
             if self._response_started is not None:
                 self._response_started = None
                 self.response_time.setText("Respuesta: descartada")
@@ -1090,6 +1434,7 @@ class Window(QMainWindow):
         self._refresh()
 
     def _cancel_worker(self):
+        self._complete_phone(503, {"error": "Solicitud detenida."})
         if self._response_started is not None:
             self._response_started = None
             self.response_time.setText("Respuesta: cancelada")
@@ -1104,6 +1449,7 @@ class Window(QMainWindow):
         self.policy.revoke("remote.request")
 
     def _stop_for_private(self):
+        self._stop_phone()
         if self._browser_dialog is not None:
             self._browser_dialog.clear_private()
         self._cancel_worker()
@@ -1112,6 +1458,9 @@ class Window(QMainWindow):
         self.provider_panel.stop()
         self.personality.stop()
         self.histories.stop()
+        self.context_cards.stop()
+        self.archive_panel.stop()
+        self.engine_setup.stop_and_wait()
         self.environment.stop()
         self.agenda_panel.stop()
         self.cinematheque.stop()
@@ -1225,6 +1574,7 @@ class Window(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+        self._stop_phone()
         self._cancel_worker()
         try:
             self.voice_panel.stop_and_wait()
@@ -1232,6 +1582,9 @@ class Window(QMainWindow):
             self.provider_panel.stop()
             self.personality.stop()
             self.histories.stop()
+            self.context_cards.stop()
+            self.archive_panel.stop(permanent=True)
+            self.engine_setup.stop_and_wait()
             self.environment.stop()
             self.agenda_panel.stop()
             self.cinematheque.stop()
@@ -1254,6 +1607,30 @@ class Window(QMainWindow):
         event.accept()
 
 
+def prepare_archive_startup(data_dir, confirm_reactivation):
+    try:
+        return apply_pending_restore(data_dir)
+    except ArchiveError:
+        policy = Policy(Path(data_dir) / "privacy.json")
+        if policy.state is not State.PRIVATE or not confirm_reactivation():
+            raise
+        # This is the same explicit local reactivation as the normal private button.
+        # No archive content was read while PRIVATE was confirmed.
+        policy.resume(local_action=True)
+        return apply_pending_restore(data_dir)
+
+
+def confirm_archive_reactivation():
+    dialog = QMessageBox(QMessageBox.Icon.Question, "Recuperar archivo interrumpido",
+        "Una restauración quedó interrumpida y el modo privado está activo. Aceptar desactiva privado "
+        "para recuperar la copia anterior antes de abrir Companion. Cancelar conserva privado y deja la aplicación cerrada.",
+        QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+    dialog.button(QMessageBox.StandardButton.Ok).setText("Aceptar y reactivar")
+    dialog.button(QMessageBox.StandardButton.Cancel).setText("Cancelar")
+    dialog.setDefaultButton(QMessageBox.StandardButton.Cancel)
+    return dialog.exec() == QMessageBox.StandardButton.Ok
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--smoke-test", action="store_true")
@@ -1262,10 +1639,12 @@ def main(argv=None):
     parser.add_argument("--providers-self-test", action="store_true")
     parser.add_argument("--modern-chat-self-test", action="store_true")
     parser.add_argument("--engine-self-test", action="store_true")
+    parser.add_argument("--workflows-self-test", action="store_true")
+    parser.add_argument("--ollama-start-self-test", action="store_true")
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument("--screenshot", type=Path)
     args = parser.parse_args(argv)
-    if (args.memory_self_test or args.engine_self_test or args.tools_self_test or args.providers_self_test or args.modern_chat_self_test) and not (args.smoke_test and args.state_dir):
+    if (args.memory_self_test or args.engine_self_test or args.tools_self_test or args.providers_self_test or args.modern_chat_self_test or args.workflows_self_test or args.ollama_start_self_test) and not (args.smoke_test and args.state_dir):
         parser.error("Self-tests require --smoke-test and an explicit temporary --state-dir")
     app = QApplication([sys.argv[0]])
     app.setApplicationName("CompanionIA")
@@ -1276,17 +1655,59 @@ def main(argv=None):
             QFontDatabase.addApplicationFont(str(system_font))
         app.setFont(QFont("Segoe UI", 10))
     app.setStyleSheet(STYLE)
-    data_dir = args.state_dir or Path(QStandardPaths.writableLocation(QStandardPaths.AppLocalDataLocation))
-    data_dir.mkdir(parents=True, exist_ok=True)
+    control_dir = Path(QStandardPaths.writableLocation(QStandardPaths.AppLocalDataLocation))
+    location = None
+    if args.state_dir:
+        data_dir = args.state_dir
+    else:
+        forbidden = [Path.home() / ".companion-ia"]
+        if getattr(sys, "frozen", False):
+            forbidden.append(Path(sys.executable).resolve().parent)
+        else:
+            forbidden.append(Path(__file__).resolve().parents[3])
+        location = StorageLocation(control_dir, forbidden_roots=forbidden)
+        try:
+            if not location.is_configured():
+                dialog = StorageLocationDialog(location)
+                if dialog.exec() != QDialog.DialogCode.Accepted:
+                    return 0
+                location.select(dialog.chosen_path)
+            data_dir = location.resolve()
+        except (StorageLocationError, OSError, ValueError):
+            QMessageBox.warning(None, "Archivo personal no disponible", "No se abrió otra carpeta para evitar perder de vista tus datos. Conectá la unidad elegida y volvé a abrir Companion.")
+            return 2
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        QMessageBox.warning(None, "Archivo personal no disponible", "No se puede acceder a la carpeta elegida. No se creó otro archivo personal.")
+        return 2
     lock = QLockFile(str(data_dir / "app.lock"))
     if not lock.tryLock(0):
         QMessageBox.information(None, "Companion IA", "Companion ya está abierto en esta cuenta.")
         return 1
+    try:
+        restore_status = prepare_archive_startup(data_dir, confirm_archive_reactivation)
+    except (ArchiveError, OSError, ValueError):
+        QMessageBox.warning(None, "Restauración pendiente", "No se pudo completar la recuperación. Companion no se abrió para evitar un archivo inconsistente; se conservan las copias de recuperación.")
+        lock.unlock()
+        return 2
     window = Window(data_dir / "privacy.json", auto_connect=not args.smoke_test)
+    window._storage_location = location
     if not args.smoke_test:
-        window.enable_preferences()
+        window.enable_preferences(require_setup=True)
+    if restore_status:
+        window.transcript.append_message("notice", restore_status)
+        window.archive_panel.status.setText(restore_status)
     window.show()
+    if not args.smoke_test:
+        QTimer.singleShot(350, window.start_welcome)
     if args.smoke_test:
+        if args.ollama_start_self_test:
+            from companion.ollama_start_check import run_start_check
+            code = run_start_check(data_dir)
+            window.close()
+            lock.unlock()
+            return code
         def capture():
             if args.screenshot:
                 args.screenshot.parent.mkdir(parents=True, exist_ok=True)
@@ -1347,6 +1768,25 @@ def main(argv=None):
             window.memory_panel.set_enabled(True)
             assert len(window.conversations.messages(identifier)) == 2
             window.conversations.delete(identifier)
+        if args.workflows_self_test:
+            import ssl
+            tls_context = ssl.create_default_context()
+            assert tls_context.check_hostname and tls_context.verify_mode == ssl.CERT_REQUIRED
+            from companion.archive_transfer import ArchiveTransfer
+            from companion.setup_manager import voice_resources
+            window.memory_panel.set_enabled(True)
+            card = window.context_cards.store.save_card("Proyectos", "Synthetic workflow", "Synthetic selected context", ["workflow demo"])
+            matches = window.context_cards.retrieve("hablemos de workflow demo")["matches"]
+            assert matches[0]["id"] == card["id"]
+            proposal = window.context_cards.store.propose(card["id"], "Synthetic revised context", source_ref="Synthetic user example")
+            window.context_cards.store.review(proposal["id"], accept=True)
+            transfer = ArchiveTransfer(data_dir, window.policy)
+            bundle = transfer.export()
+            transfer.validate_bundle(bundle)
+            requirements, voice_worker = voice_resources()
+            assert requirements.is_file() and voice_worker.is_file()
+            window.context_cards.store.delete_card(card["id"])
+            window.memory_panel.set_enabled(False)
         if args.engine_self_test:
             if not window.voice_panel.ready:
                 return 2
@@ -1364,6 +1804,19 @@ def main(argv=None):
             QTimer.singleShot(350, capture)
     result = app.exec()
     lock.unlock()
+    if window._restart_requested:
+        process = QProcess()
+        process.setProgram(sys.executable)
+        arguments = [] if window._storage_location is not None else ["--state-dir", str(window._restart_state_dir)]
+        if not getattr(sys, "frozen", False):
+            arguments = ["-m", "companion.desktop", *arguments]
+            environment = QProcessEnvironment.systemEnvironment()
+            environment.insert("PYTHONPATH", str(Path(__file__).resolve().parents[1]))
+            process.setProcessEnvironment(environment)
+        process.setArguments(arguments)
+        started, _ = process.startDetached()
+        if not started:
+            QMessageBox.warning(None, "Reabrir Companion", "La copia está preparada. Volvé a abrir Companion para completar la restauración.")
     return result
 
 

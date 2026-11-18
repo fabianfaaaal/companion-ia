@@ -1,20 +1,20 @@
-<div align="center">
+﻿# Companion IA
 
-![Companion IA — una compañera, tu mundo](docs/assets/companion-banner.svg)
+Un asistente de escritorio para conversar con modelos locales, conservar el contexto que elegís y escuchar las respuestas. El proyecto está en alpha para Windows.
 
-**Una compañera digital para conversar, crear y volver a tus recuerdos. ✨**
+[Descargar la alpha de Windows](https://github.com/fabianfaaaal/companion-ia/releases) · [Primeros pasos](docs/primeros-pasos.md) · [Código y licencia Apache-2.0](LICENSE)
 
-![Estado](https://img.shields.io/badge/estado-alpha_en_desarrollo-a78bfa)
-![Licencia](https://img.shields.io/badge/código-Apache_2.0-75e4c2)
-![Windows](https://img.shields.io/badge/Windows-preview-4da8da)
-![Linux](https://img.shields.io/badge/Linux-pruebas_CI-f0c674)
-![Android](https://img.shields.io/badge/Android-planificado-9baec4)
+## Probalo en Windows
 
-**Alpha Windows · guardado inicial configurable · APIs externas con costos propios**
+1. Descargá el ZIP de la alpha, extraé la carpeta completa y abrí **CompanionIA.exe**.
+2. Para conversar en tu PC, prepará Ollama y elegí un modelo local siguiendo la guía de primeros pasos.
+3. Abrí un chat y probá una conversación con la memoria apagada. Podés habilitar la lectura de respuestas cuando hayas preparado una voz.
 
-[⬇ Descargar alpha Windows](https://github.com/fabianfaaaal/companion-ia/releases) · [Tutorial de primeros pasos](docs/primeros-pasos.md) · [Guía del preview Windows](docs/modern-chat-preview.md) · [La experiencia](#-la-experiencia) · [Qué funciona](#-qué-funciona-hoy) · [Probar](#-manos-a-la-obra) · [Cómo trabajamos](#-construido-con-ia-y-con-criterio)
+En esta rama también podés probar un **lector local independiente**. Desde el checkout, ejecutá `powershell.exe -NoProfile -STA -File .\scripts\reader-windows.ps1`, pegá texto y elegí una voz de Windows. El lector funciona con las voces compatibles instaladas en el equipo.
 
-</div>
+## Diseño e implementación
+
+Companion integra una interfaz Qt con inferencia local mediante Ollama, dictado por pulsación y síntesis de voz. La política de privacidad controla captura, reproducción y acceso al contexto. La distribución pública, las compilaciones de prueba y las propuestas de voz tienen recorridos de validación propios.
 
 ## 💚 La experiencia
 
@@ -34,7 +34,10 @@ Queremos que puedas charlar, trabajar, configurar una mascota o una compañera y
 | 🔒 Chat privado | Solo chat local temporal; apaga memoria, percepción, voz y APIs externas |
 | 🪄 Dispositivo flotante | Ventana compacta sin marco, acceso al programa completo y tres pieles |
 | 🖼️ Memoteca independiente | Galería de fotos/descripciones en otra ventana, con los mismos permisos |
-| 🧠 Contexto recuperable | Notas e historiales seleccionados, fuentes inspeccionables |
+| 🧠 Contexto recuperable | Notas, historiales y fichas con claves/alias, ambigüedad y versiones |
+| 📝 Aprendizaje revisable | Propuestas explícitas con edición, aceptación/rechazo y conflictos |
+| 📁 Copias por carpetas | Exportar, pegar en entrada y aceptar restauración con copia previa |
+| 📦 Preparación guiada Windows | Aplicación, Ollama/modelo y voz/dictado mediante botones |
 | 🔌 Modelos intercambiables | Ollama local; adaptadores DeepSeek/OpenAI y respaldo local informado |
 | 🌍 Chat web sin API | Intercambio manual con navegador: revisar, copiar, pegar respuesta y voz; [guía](docs/chat-web-manual.md) |
 | 🎭 Personalidad | Nombre, perfil, estilo e instrucciones propias |
@@ -46,13 +49,13 @@ Queremos que puedas charlar, trabajar, configurar una mascota o una compañera y
 
 ### Lo que todavía estamos construyendo 🛠️
 
-Tutorial de palabras clave, archivo íntimo cifrado, instalador unificado, sincronización de historiales, más proveedores y una Cinemateca con relatos/video. Cámara, interpretación visual y escucha continua no están integradas.
+El preview local nuevo incluye fichas/claves con aprendizaje revisable, respaldo por carpetas y preparación guiada de motores. Falta aceptar su recorrido en una PC limpia. Siguen pendientes el archivo íntimo cifrado (para el final), sincronización de historiales, más proveedores y una Cinemateca con relatos/video. Cámara, interpretación visual y escucha continua no están integradas.
 
 Qwen TTS está disponible como experimento de voz y resultó lento en la PC de referencia; Piper es la alternativa de menor demora. No prometemos conversación de voz en tiempo real.
 
 ## 🧭 Tus controles importan
 
-El primer inicio normal trae funciones habilitadas, incluido el guardado del chat. **Las opciones que desmarcás y los perfiles elegidos se recuerdan.** Guardar, usar contexto y enviarlo a otro proveedor son decisiones distintas.
+El nuevo preview saluda al abrir y pide configuración inicial antes de guardar. Podés confirmar las funciones preseleccionadas o elegir Más tarde y continuar con chat temporal. La voz requiere motor local preparado; privado permanece silencioso. Las descargas anteriores mantienen su comportamiento previo. **Las opciones que desmarcás y los perfiles elegidos se recuerdan.** Guardar, usar contexto y enviarlo a otro proveedor son decisiones distintas.
 
 - **Memoria activa:** conserva los mensajes visibles del chat; notas, fotos e importaciones tienen sus controles.
 - **Memoria apagada:** no accede al archivo conservado; el chat nuevo vive en esa sesión.
@@ -74,7 +77,7 @@ Los historiales importados conservan cuenta y autor. Una respuesta de otro asist
 
 Descargá el ZIP de la última **pre-release** en [GitHub Releases](https://github.com/fabianfaaaal/companion-ia/releases), extraelo completo y abrí `CompanionIA.exe`. Incluye Python y la interfaz; Ollama, modelos y voz se preparan aparte. **Todavía no hay instalador universal ni release estable.**
 
-Seguí el [tutorial de primeros pasos](docs/primeros-pasos.md). **Mis datos** dentro del programa muestra la carpeta real del archivo local y permite abrirla o copiar su ubicación.
+Seguí el [tutorial de primeros pasos](docs/primeros-pasos.md). Para el nuevo preview, consultá [fichas, copias y preparación con botones](docs/guided-preview.md). **Mis datos** dentro del programa muestra la carpeta real del archivo local y permite abrirla o copiar su ubicación.
 
 Guías:
 
@@ -104,7 +107,7 @@ Para construir el paquete de este hito:
 
 ## 🧪 Lo probado y lo que falta aceptar
 
-La suite local más reciente tiene **239 pruebas aprobadas**, con datos sintéticos. Incluye permisos, persistencia, cancelación, transporte, filtros de contexto, perfiles y widgets.
+La suite local más reciente tiene **364 pruebas ejecutadas: 363 aprobadas y una omitida por permisos del sistema para crear un enlace simbólico**, con datos sintéticos. Incluye permisos, persistencia, cancelación, transporte, filtros de contexto, perfiles y widgets.
 
 ```powershell
 .\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
@@ -127,3 +130,6 @@ El código propio usa [Apache-2.0](LICENSE). Podés copiarlo y modificarlo bajo 
 Companion IA no cobra por su código; un proveedor externo puede facturar su API. Por ahora **no aceptamos contribuciones externas de código**.
 
 Gracias por acompañar esta etapa. Vamos construyendo la experiencia, una conversación y un hito a la vez. 💚
+
+## Android alpha
+El cliente de chat local se vincula por QR con Companion en Windows y usa Ollama en la PC. [Compilar y probar en Wi-Fi](android/README.md).

@@ -25,6 +25,7 @@ class InteractionWorker(QThread):
         self.cancel_event = threading.Event()
         self.client = OllamaClient()
         self.remote = None
+        self.local_max_tokens = 2048 if depth == "deep" else 1024
 
     def cancel(self):
         self.cancel_event.set()
@@ -95,7 +96,7 @@ class InteractionWorker(QThread):
                 self.stage.emit(self.job, fallback_reason + " Continuando con Ollama local; puede tener menos capacidad. Una solicitud remota fallida podría haber consumido cuota.")
             fallback_messages = self.remote_messages if self.route else self.local_messages
             self.snapshot.emit(self.job, fallback_messages)
-            maximum = self.route["max_tokens"] if self.route else (2048 if self.depth == "deep" else 1024)
+            maximum = self.route["max_tokens"] if self.route else self.local_max_tokens
             answer, metrics, first = self._local(fallback_messages, maximum)
             self.result.emit(self.job, dict(answer=answer, metrics=metrics, first=first,
                 elapsed=time.perf_counter()-started, provider="Ollama local", account="", prepared=False,

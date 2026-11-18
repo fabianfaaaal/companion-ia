@@ -74,6 +74,46 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(self.w.history, [])
         self.assertFalse((self.root / "memory.sqlite").exists())
 
+    def test_handy_release_sends_locally_without_touching_typed_draft(self):
+        panel = self.w.voice_panel
+        panel.ready = True
+        panel.read.setChecked(True)
+        panel.set_microphone_enabled(True)
+        self.w.models.addItem("synthetic:local")
+        self.w._refresh()
+        self.w.input.setPlainText("Borrador escrito")
+        panel.audio = MagicMock(recording=True, playing=False)
+        with patch("companion.voice_panel.SpeechJob.start"), patch(
+            "companion.desktop.InteractionWorker.start"
+        ) as start, patch.object(self.w.provider_panel, "request") as external:
+            panel.handy.pressed.emit()
+            panel.audio.begin_recording.assert_called_once()
+            start.assert_not_called()
+            panel.handy.released.emit()
+            panel.audio.finish_recording.assert_called_once()
+            panel._result(panel._job, {"op": "stt", "text": "Buscá una semilla"})
+            start.assert_called_once()
+            external.assert_not_called()
+            self.assertIsNone(self.w._worker.route)
+            self.assertEqual(self.w._worker.local_max_tokens, 160)
+            self.assertEqual(self.w._worker.local_messages[-1]["content"], "Buscá una semilla")
+            self.assertEqual(self.w.input.toPlainText(), "Borrador escrito")
+            with patch.object(self.w, "_apply_result"), patch.object(panel, "speak") as speak:
+                self.w._result(self.w._job, {"answer": "Prueba breve."})
+                speak.assert_called_once_with("Prueba breve.", force_piper=True)
+
+    def test_handy_revoke_before_release_discards_audio(self):
+        panel = self.w.voice_panel
+        panel.ready = panel.handy_available = True
+        panel.read.setChecked(True)
+        panel.set_microphone_enabled(True)
+        panel.audio = MagicMock(recording=True, playing=False)
+        panel.handy.pressed.emit()
+        panel.set_microphone_enabled(False)
+        panel.handy.released.emit()
+        panel.audio.finish_recording.assert_not_called()
+        self.assertFalse(panel.handy.isEnabled())
+
     def test_disabling_voice_discards_queued_and_late_audio(self):
         panel = self.w.voice_panel
         panel.read.setChecked(True)

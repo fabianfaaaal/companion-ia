@@ -23,7 +23,7 @@ jobs:
         run: |
           $state = Join-Path $env:RUNNER_TEMP 'companion-smoke'
           $exe = Resolve-Path 'dist/modern-chat-preview/CompanionIA/CompanionIA.exe'
-          $process = Start-Process -FilePath $exe -ArgumentList @('--smoke-test', '--memory-self-test', '--tools-self-test', '--providers-self-test', '--modern-chat-self-test', '--state-dir', $state) -Wait -PassThru -WindowStyle Hidden
+          $process = Start-Process -FilePath $exe -ArgumentList @('--smoke-test', '--memory-self-test', '--tools-self-test', '--providers-self-test', '--modern-chat-self-test', '--workflows-self-test', '--state-dir', $state) -Wait -PassThru -WindowStyle Hidden
           if ($process.ExitCode -ne 0) { throw "Frozen smoke failed: $($process.ExitCode)" }
       - name: Publish portable alpha and checksum
         shell: pwsh

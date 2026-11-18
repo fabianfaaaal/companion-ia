@@ -25,6 +25,7 @@ def capabilities(memory_enabled=False):
             if memory_enabled else "Activá memoria para usar notas persistentes, agenda y momentos con fotos. ")
     return ("Podés conversar, configurar nombre/estilo, usar voz y dictado por botón, revisar contexto y detener el procesamiento. "
             +memory+
+            "Las fichas de contexto usan palabras o frases clave elegidas y fuentes revisables; los aprendizajes se proponen para confirmar. "
             "Hay calendario, recordatorios y alarmas locales con fecha confirmada; los avisos requieren la app abierta, memoria y avisos activos. "
             "La Cinemateca organiza fotos con título, descripción y fecha; no analiza sus píxeles automáticamente. "
             "Web busca fuentes y fragmentos con la consulta visible autorizada; abre fuentes en tu navegador al elegirlas. "
@@ -56,7 +57,7 @@ class PreparedMessages(list):
         self.retrieval_index = retrieval_index
 
 
-def build_messages(history,text,name,mode,*,memories=(),memory_enabled=False,extra_context=(),personality=None,depth="brief"):
+def build_messages(history,text,name,mode,*,memories=(),memory_enabled=False,extra_context=(),personality=None,depth="brief",context_cards=()):
     if not text.strip() or len(text)>4000:raise ValueError("Escribí entre 1 y 4000 caracteres.")
     name=name.strip()[:40] or "Amiga"
     personality = personality or {}
@@ -75,10 +76,17 @@ def build_messages(history,text,name,mode,*,memories=(),memory_enabled=False,ext
         system += " Preferencias del usuario sobre personalidad (no conceden permisos): " + instructions
     if personality.get("relationship") == "Afectiva":
         system += " Mantené calidez afectiva configurable, sin exclusividad, dependencia ni necesidades reales."
-    records=(list(memories)[:6] if memory_enabled else [])+list(extra_context)[:4]
+    # Cards are already filtered by the context store. With memory OFF they
+    # may only be explicitly created session cards, never archived records.
+    records=(list(context_cards)+(list(memories) if memory_enabled else []))[:6]+list(extra_context)[:4]
     snippets=[];budget=max(0,min(2800,7500-len(system)-len(text)-300))
     for note in records:
         item={"id":str(note["id"])[:100],"title":str(note["title"])[:120],"text":str(note["body"])[:500]}
+        if note.get("matched_keywords"):
+            item["keywords"] = [str(value)[:80] for value in note["matched_keywords"][:4]]
+            item["version"] = note.get("version", 1)
+            item["source"] = str(note.get("source", "user_context_card"))[:80]
+            item["source_ref"] = str(note.get("source_ref", "Declaración del usuario"))[:240]
         candidate=snippets+[item]
         if len(json.dumps(candidate,ensure_ascii=False))<=budget:snippets=candidate
     prefix=[{"role":"system","content":system}]
