@@ -3,7 +3,7 @@
 Cliente de chat local para Ollama en Windows. Conectá ambos equipos a la misma Wi-Fi.
 
 1. Instalá las dependencias de requirements-build-windows.txt en la PC y abrí Companion desde el código.
-2. Elegí un modelo Ollama. En Android, ingresá la IPv4 local de la PC y habilitá el chat.
+2. Elegí un modelo Ollama. En Android, habilitá el chat para generar el QR.
 3. Desde la APK escaneá el QR y enviá un mensaje. Si Windows pide permiso de red, habilitá la red privada.
 4. Deshabilitá Android o entrá en modo privado para cerrar la conexión.
 

@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.WindowInsets;
@@ -29,6 +31,67 @@ public class ChatActivity extends Activity {
     private String pin, session;
     private TextView transcript;
     private Button send;
+    private TextView status;
+    private String phase = "Desconectado";
+    private static final String[] DOTS = {"", ".", "..", "..."};
+    private int dots;
+    private boolean checking;
+    private boolean busy;
+    private final Handler ui = new Handler(Looper.getMainLooper());
+    private final Runnable animate = new Runnable() {
+        @Override public void run() {
+            status.setText(phase + (session == null ? "" : DOTS[dots]));
+            dots = (dots + 1) % 4;
+            ui.postDelayed(this, 400);
+        }
+    };
+
+    private final Runnable heartbeat = new Runnable() {
+        @Override public void run() {
+            if (session != null && !busy && !checking) {
+                URL address = host;
+                String fingerprint = pin;
+                String code = session;
+                checking = true;
+                new Thread(() -> {
+                    boolean connected;
+                    try {
+                        connected = request(address, fingerprint, code, "/status", "")
+                                .getBoolean("connected");
+                    } catch (Exception error) {
+                        connected = false;
+                    }
+                    boolean reachable = connected;
+                    runOnUiThread(() -> {
+                        checking = false;
+                        if (!isDestroyed() && !busy && code.equals(session) && !reachable) {
+                            loseConnection();
+                        }
+                    });
+                }).start();
+            }
+            ui.postDelayed(this, 5000);
+        }
+    };
+
+    private void loseConnection() {
+        session = null;
+        setPhase("Conexión perdida · Volvé a escanear");
+        send.setEnabled(false);
+    }
+
+    private void setPhase(String value) {
+        runOnUiThread(() -> {
+            if (isDestroyed()) return;
+            phase = value;
+            status.setText(value);
+        });
+    }
+
+    @Override protected void onDestroy() {
+        ui.removeCallbacksAndMessages(null);
+        super.onDestroy();
+    }
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -49,6 +112,16 @@ public class ChatActivity extends Activity {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setGravity(Gravity.CENTER_HORIZONTAL);
+        status = new TextView(this);
+        status.setGravity(Gravity.CENTER);
+        status.setTextColor(0xff75e4c2);
+        status.setTextSize(16);
+        status.setText(phase);
+        layout.addView(status);
+        ImageView robot = new ImageView(this);
+        robot.setImageResource(R.drawable.companion_robot);
+        robot.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        layout.addView(robot, new LinearLayout.LayoutParams(dp(68), dp(68)));
         Button scan = new Button(this);
         scan.setText("Escanear QR de Companion");
         scan.setOnClickListener(view -> new IntentIntegrator(this)
@@ -84,6 +157,8 @@ public class ChatActivity extends Activity {
         setContentView(safeArea);
         safeArea.requestFocus();
         safeArea.requestApplyInsets();
+        ui.post(animate);
+        ui.postDelayed(heartbeat, 5000);
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -107,7 +182,9 @@ public class ChatActivity extends Activity {
             Toast.makeText(this, "Vinculá el teléfono e ingresá un mensaje de hasta 4000 caracteres.", Toast.LENGTH_LONG).show();
             return;
         }
+        busy = true;
         send.setEnabled(false);
+        setPhase("Enviando datos");
         new Thread(() -> {
             try {
                 String answer = request(address, fingerprint, code, "/chat", text).getString("answer");
@@ -115,20 +192,31 @@ public class ChatActivity extends Activity {
                     if (isDestroyed()) return;
                     transcript.append("Vos: " + text + "\n\nCompanion: " + answer + "\n\n");
                     if (message.getText().toString().trim().equals(text)) message.setText("");
+                    busy = false;
+                    setPhase("Conectado · Esperando datos");
                     send.setEnabled(true);
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> {
                     if (isDestroyed()) return;
                     Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show();
-                    send.setEnabled(true);
+                    busy = false;
+                    if (error instanceof RequestFailure && ((RequestFailure) error).status < 500
+                            && ((RequestFailure) error).status != 401) {
+                        setPhase("Conectado · Esperando datos");
+                        send.setEnabled(true);
+                    } else {
+                        loseConnection();
+                    }
                 });
             }
         }).start();
     }
 
     private void pair(String contents) {
-        if (contents.length() > 2048) return;
+        if (contents.length() > 2048 || busy) return;
+        busy = true;
+        setPhase("Vinculando");
         send.setEnabled(false);
         new Thread(() -> {
             try {
@@ -148,17 +236,30 @@ public class ChatActivity extends Activity {
                     host = address;
                     pin = fingerprint;
                     session = linked;
+                    busy = false;
+                    setPhase("Conectado · Esperando datos");
                     transcript.setText("Conectado a Companion.\n\n");
                     send.setEnabled(true);
                 });
             } catch (Exception error) {
                 runOnUiThread(() -> {
                     if (isDestroyed()) return;
+                    busy = false;
+                    setPhase(session == null ? "Desconectado" : "Conectado · Esperando datos");
                     send.setEnabled(session != null);
                     Toast.makeText(this, error.getMessage(), Toast.LENGTH_LONG).show();
                 });
             }
         }).start();
+    }
+
+    private static final class RequestFailure extends Exception {
+        final int status;
+
+        RequestFailure(int status, String message) {
+            super(message);
+            this.status = status;
+        }
     }
 
     private JSONObject request(URL address, String pin, String code, String path, String text) throws Exception {
@@ -192,7 +293,7 @@ public class ChatActivity extends Activity {
         try {
             connection.setInstanceFollowRedirects(false);
             connection.setConnectTimeout(8000);
-            connection.setReadTimeout(95000);
+            connection.setReadTimeout(path.equals("/chat") ? 95000 : 5000);
             connection.setRequestMethod("POST");
             connection.setRequestProperty("Authorization", "Bearer " + code);
             connection.setRequestProperty("Content-Type", "application/json");
@@ -203,7 +304,9 @@ public class ChatActivity extends Activity {
             try (OutputStream output = connection.getOutputStream()) {
                 output.write(data);
             }
+            if (path.equals("/chat")) setPhase("Esperando respuesta de la PC");
             int status = connection.getResponseCode();
+            if (path.equals("/chat")) setPhase("Recibiendo datos");
             try (InputStream input = status == 200 ? connection.getInputStream() : connection.getErrorStream()) {
                 if (input == null) throw new IllegalStateException("HTTP " + status);
                 ByteArrayOutputStream body = new ByteArrayOutputStream();
@@ -214,7 +317,7 @@ public class ChatActivity extends Activity {
                     body.write(buffer, 0, count);
                 }
                 JSONObject result = new JSONObject(body.toString("UTF-8"));
-                if (status != 200) throw new IllegalStateException(result.optString("error", "HTTP " + status));
+                if (status != 200) throw new RequestFailure(status, result.optString("error", "HTTP " + status));
                 return result;
             }
         } finally {

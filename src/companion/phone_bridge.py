@@ -1,6 +1,7 @@
 """Direct HTTPS transport paired by a one-time QR."""
 import hmac
 import ssl
+import socket
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,6 +12,13 @@ from queue import Full, Queue
 from secrets import token_urlsafe
 from threading import Event, Thread
 from time import monotonic
+
+
+def local_ipv4():
+    # A UDP connect selects the interface without sending a datagram.
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as route:
+        route.connect(("192.0.2.1", 9))
+        return route.getsockname()[0]
 
 
 class SecureServer(HTTPServer):
@@ -31,6 +39,7 @@ class PhoneBridge:
         context, fingerprint = session_tls()
         self.token = token_urlsafe(32)
         self.session = ""
+        self.phase = "Esperando emparejamiento"
         self.expires = monotonic() + 120
         self.qr = json.dumps({
             "url": f"https://{host}:18763", "pin": fingerprint, "code": self.token,
@@ -74,12 +83,16 @@ class PhoneBridge:
                     bridge.device = device
                     bridge.origin = self.client_address[0]
                     bridge.token = ""
+                    bridge.phase = "Esperando datos"
                     return self.reply(200, {"session": bridge.session})
-                if self.path != "/chat":
+                if self.path not in ("/chat", "/status"):
                     return self.reply(404, {"error": "Ruta desconocida."})
                 if not bridge.session or not hmac.compare_digest(
                         auth, f"Bearer {bridge.session}".encode()):
                     return self.reply(401, {"error": "Volvé a vincular el teléfono."})
+                if self.path == "/status":
+                    return self.reply(200, {"connected": True})
+                bridge.phase = "Recibiendo datos"
                 try:
                     size = int(self.headers.get("Content-Length", "0"))
                     if not 0 < size <= 32768:
@@ -89,6 +102,7 @@ class PhoneBridge:
                     if not isinstance(message, str) or not 0 < len(message.strip()) <= 4000:
                         raise ValueError()
                 except ValueError:
+                    bridge.phase = "Esperando datos"
                     return self.reply(400, {"error": "Mensaje inválido."})
                 future = Future()
                 try:
@@ -101,10 +115,15 @@ class PhoneBridge:
                         status, payload = future.result(timeout=0.25)
                     except TimeoutError:
                         continue
-                    return self.reply(status, payload)
+                    bridge.phase = "Enviando datos"
+                    try:
+                        return self.reply(status, payload)
+                    finally:
+                        bridge.phase = "Esperando datos"
                 future.cancel()
                 if bridge.closed.is_set():
                     return self.reply(503, {"error": "Sesión Android cerrada."})
+                bridge.phase = "Esperando datos"
                 self.reply(504, {"error": "Companion tardó demasiado."})
 
 

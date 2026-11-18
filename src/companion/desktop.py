@@ -312,14 +312,21 @@ class Window(QMainWindow):
         layout = QVBoxLayout(phone_panel)
         self._phone_toggle = QPushButton("Habilitar chat Android")
         self._phone_toggle.clicked.connect(self._toggle_phone)
-        self._phone_code = QLineEdit()
-        self._phone_code.setPlaceholderText("IPv4 de esta PC")
         self._phone_qr = QLabel()
         self._phone_status = QLabel("Desconectado")
-        layout.addWidget(self._phone_toggle)
-        layout.addWidget(self._phone_code)
-        layout.addWidget(self._phone_qr)
+        self._phone_status.setObjectName("brand")
+        self._phone_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        from PySide6.QtGui import QPixmap
+        robot = QLabel()
+        robot.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        image = QPixmap(str(Path(__file__).with_name("assets") / "companion-robot.png"))
+        robot.setPixmap(image.scaledToWidth(80, Qt.TransformationMode.SmoothTransformation))
+        self._phone_dots = 0
+        self._phone_tick = 0
         layout.addWidget(self._phone_status)
+        layout.addWidget(robot)
+        layout.addWidget(self._phone_toggle)
+        layout.addWidget(self._phone_qr)
         layout.addStretch()
         self.tabs.addTab(phone_panel, "Android")
         self._phone_timer = QTimer(self)
@@ -1148,10 +1155,10 @@ class Window(QMainWindow):
         if self.policy.state is not State.ACTIVE:
             return
         try:
-            from ipaddress import IPv4Address
+            from companion.phone_bridge import local_ipv4
             import qrcode
             from PySide6.QtGui import QImage, QPixmap
-            host = str(IPv4Address(self._phone_code.text().strip()))
+            host = local_ipv4()
             self._phone_bridge = self._phone_bridge_type(host)
             matrix = qrcode.QRCode(box_size=1, border=4)
             matrix.add_data(self._phone_bridge.qr)
@@ -1162,10 +1169,9 @@ class Window(QMainWindow):
                     image.setPixel(x, y, 0xff000000 if dark else 0xffffffff)
             self._phone_qr.setPixmap(QPixmap.fromImage(image).scaled(len(rows) * 5, len(rows) * 5))
         except (OSError, ValueError, ImportError):
-            self._phone_status.setText("Revisa la IPv4, el puerto y las dependencias.")
+            self._phone_status.setText("Revisá la conexión de red de la PC y volvé a generar el QR.")
             return
         self._phone_toggle.setText("Deshabilitar chat Android")
-        self._phone_code.setReadOnly(True)
         self._phone_status.setText("Escaneá el QR desde Android en los próximos dos minutos.")
 
     def _complete_phone(self, status, payload):
@@ -1186,7 +1192,6 @@ class Window(QMainWindow):
             self._cancel_worker()
         self._phone_history.clear()
         self._phone_qr.clear()
-        self._phone_code.setReadOnly(False)
         self._phone_toggle.setText("Habilitar chat Android")
         self._phone_status.setText("Desconectado")
         bridge.close()
@@ -1195,6 +1200,10 @@ class Window(QMainWindow):
         from queue import Empty
         if self._phone_bridge is not None and self._phone_bridge.session:
             self._phone_qr.clear()
+            self._phone_tick += 1
+            if self._phone_tick % 4 == 0:
+                self._phone_dots = (self._phone_dots + 1) % 4
+            self._phone_status.setText(self._phone_bridge.phase + "." * self._phone_dots)
         if self._phone_bridge is None:
             return
         if self.policy.state is not State.ACTIVE:
@@ -1222,7 +1231,7 @@ class Window(QMainWindow):
         if self._worker is None:
             self._complete_phone(503, {"error": "Chat local no disponible."})
         else:
-            self._phone_status.setText("Generando respuesta para Android…")
+            self._phone_bridge.phase = "Pensando"
 
     def send_message(self):
         self._send_message(self.input.toPlainText().strip())
@@ -1349,7 +1358,6 @@ class Window(QMainWindow):
                             {"role": "assistant", "content": answer},
                         ])[-12:]
                         self._complete_phone(200, {"answer": answer})
-                        self._phone_status.setText("Respuesta enviada a Android.")
                 self.policy.publish(self._lease, deliver)
                 return
             self.policy.publish(self._lease, lambda: self._apply_result(result))
