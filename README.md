@@ -1,14 +1,33 @@
-# Companion IA
+<div align="center">
 
-[Leer en español](README_spanish.md) · [Windows downloads](https://github.com/fabianfaaaal/companion-ia/releases) · [Android alpha](https://github.com/fabianfaaaal/companion-ia/releases/tag/android-alpha-0.1.0)
+<img src="src/companion/assets/companion-robot.png" width="120" alt="Companion IA’s smiling robot">
+
+<h1>Companion IA</h1>
+
+<strong>Local AI chat, a voice, and context you choose to keep.</strong>
+
+<p>
+  <a href="https://github.com/fabianfaaaal/companion-ia/releases"><img alt="Download Windows preview" src="https://img.shields.io/badge/Windows-Download_preview-24374c?style=for-the-badge&logoColor=white"></a>
+  <a href="https://github.com/fabianfaaaal/companion-ia/releases/tag/android-alpha-0.1.0"><img alt="Download Android alpha" src="https://img.shields.io/badge/Android-Download_alpha-75e4c2?style=for-the-badge&logo=android&logoColor=10251f"></a>
+</p>
+
+[Leer en español](README_spanish.md) · [Quick start](#quick-start) · [Features](#what-you-can-try) · [Privacy](#privacy-and-architecture)
+
+</div>
+
+---
 
 Companion IA is an open-source desktop assistant that runs local language models, speaks their responses, and lets you choose which context carries over between conversations. You can switch models while keeping the personality and context you have configured.
 
-## Try it on Windows
+## Quick start
+
+### Windows
 
 1. Download a Windows preview ZIP from [GitHub Releases](https://github.com/fabianfaaaal/companion-ia/releases), extract the entire folder, and open **CompanionIA.exe**.
 2. Set up Ollama and download a local model. Follow the [first steps guide (Spanish)](docs/primeros-pasos.md).
 3. Start a chat with memory off. To try dictation or spoken replies, follow the [voice setup guide (Spanish)](docs/voice-ready-preview.md).
+
+### Android
 
 The Android alpha pairs with the current Windows source build using a one-time QR code. Both devices must be on the same Wi-Fi. Android sends messages and displays replies while Ollama runs on the PC. [Android setup and build instructions (Spanish)](android/README.md)
 
@@ -25,6 +44,10 @@ The Android alpha pairs with the current Windows source build using a one-time Q
 
 ## Run from source
 
+<details>
+<summary>Windows setup and standalone reader commands</summary>
+
+
 Use **Python 3.12** and an Ollama installation with a local model. From the repository root in PowerShell:
 
 ```powershell
@@ -40,21 +63,34 @@ To open the standalone reader:
 powershell.exe -NoProfile -STA -File .\scripts\reader-windows.ps1
 ```
 
+</details>
+
 ## Privacy and architecture
 
 The Qt desktop app checks permissions before gathering context, routing a request, or playing audio. Memory, sensor access, and sharing with external providers have separate controls. Private mode leaves a temporary local chat and disables memory access, voice, sensors, external APIs, and the Android session.
 
-The personal archive is currently stored without encryption. Use test data in the alpha. The Android client verifies the PC's TLS identity using the QR code and keeps the mobile conversation in memory. The PC records connection events locally.
+> [!IMPORTANT]
+> The personal archive is currently stored without encryption. Use test data in the alpha.
+
+The Android client verifies the PC's TLS identity using the QR code and keeps the mobile conversation in memory. The PC records connection events locally.
 
 ## Validation and project status
 
-Windows and Android are in alpha. The Android APK was built and launched on a physical phone, and the encrypted transport, one-time pairing, and local connection logging were tested with synthetic data. A full phone-to-PC Ollama session on Wi-Fi remains to be verified. Remote connectivity over the internet, persistent trusted devices, email confirmation, and mobile voice and sensors are planned. Linux has CI coverage, with packaging still pending.
+> [!NOTE]
+> Windows and Android are in alpha.
 
-Run the Windows test suite from the repository root:
+The Android APK was built and launched on a physical phone, and the encrypted transport, one-time pairing, and local connection logging were tested with synthetic data. A full phone-to-PC Ollama session on Wi-Fi remains to be verified. Remote connectivity over the internet, persistent trusted devices, email confirmation, and mobile voice and sensors are planned. Linux has CI coverage, with packaging still pending.
+
+<details>
+<summary>Run the Windows test suite</summary>
+
+From the repository root:
 
 ```powershell
 .\.venv\Scripts\python.exe -B -m unittest discover -s tests -v
 ```
+
+</details>
 
 ## Maintainer and license
 
