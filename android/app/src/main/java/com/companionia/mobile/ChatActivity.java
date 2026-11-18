@@ -3,7 +3,10 @@ package com.companionia.mobile;
 import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
-import android.text.InputType;
+import android.os.Build;
+import android.view.Gravity;
+import android.view.View;
+import android.view.WindowInsets;
 import android.widget.*;
 import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
@@ -29,9 +32,23 @@ public class ChatActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        LinearLayout safeArea = new LinearLayout(this);
+        safeArea.setOrientation(LinearLayout.VERTICAL);
+        safeArea.setPadding(dp(16), dp(8), dp(16), dp(8));
+        if (Build.VERSION.SDK_INT >= 30) {
+            getWindow().setDecorFitsSystemWindows(false);
+            safeArea.setOnApplyWindowInsetsListener((view, insets) -> {
+                android.graphics.Insets edges = insets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout()
+                                | WindowInsets.Type.ime());
+                view.setPadding(edges.left + dp(16), edges.top + dp(8),
+                        edges.right + dp(16), edges.bottom + dp(8));
+                return insets;
+            });
+        }
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(24, 40, 24, 24);
+        layout.setGravity(Gravity.CENTER_HORIZONTAL);
         Button scan = new Button(this);
         scan.setText("Escanear QR de Companion");
         scan.setOnClickListener(view -> new IntentIntegrator(this)
@@ -42,13 +59,31 @@ public class ChatActivity extends Activity {
         transcript.setTextIsSelectable(true);
         scroll.addView(transcript);
         layout.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
-        message = field(layout, "Mensaje");
+        LinearLayout composer = new LinearLayout(this);
+        composer.setGravity(Gravity.CENTER_VERTICAL);
+        message = new EditText(this);
+        message.setHint("Mensaje");
+        message.setMaxLines(3);
+        composer.addView(message, new LinearLayout.LayoutParams(0, -2, 1));
         send = new Button(this);
         send.setText("Enviar");
+        send.setBackgroundTintList(new android.content.res.ColorStateList(
+                new int[][]{{-android.R.attr.state_enabled}, {}},
+                new int[]{0xff1a2636, 0xff75e4c2}));
+        send.setTextColor(new android.content.res.ColorStateList(
+                new int[][]{{-android.R.attr.state_enabled}, {}},
+                new int[]{0xff9baec4, 0xff10251f}));
         send.setEnabled(false);
         send.setOnClickListener(view -> sendMessage());
-        layout.addView(send);
-        setContentView(layout);
+        composer.addView(send);
+        layout.addView(composer, new LinearLayout.LayoutParams(-1, -2));
+        safeArea.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1));
+        safeArea.addView(layout, new LinearLayout.LayoutParams(-1, 0, 4));
+        safeArea.addView(new View(this), new LinearLayout.LayoutParams(1, 0, 1));
+        safeArea.setFocusableInTouchMode(true);
+        setContentView(safeArea);
+        safeArea.requestFocus();
+        safeArea.requestApplyInsets();
     }
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -59,11 +94,8 @@ public class ChatActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
     }
 
-    private EditText field(LinearLayout layout, String hint) {
-        EditText field = new EditText(this);
-        field.setHint(hint);
-        layout.addView(field);
-        return field;
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     private void sendMessage() {
