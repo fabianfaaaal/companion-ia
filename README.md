@@ -1,20 +1,20 @@
-<div align="center">
+﻿# Companion IA
 
-![Companion IA — una compañera, tu mundo](docs/assets/companion-banner.svg)
+Un asistente de escritorio para conversar con modelos locales, conservar el contexto que elegís y escuchar las respuestas. El proyecto está en alpha para Windows.
 
-**Una compañera digital para conversar, crear y volver a tus recuerdos. ✨**
+[Descargar la alpha de Windows](https://github.com/fabianfaaaal/companion-ia/releases) · [Primeros pasos](docs/primeros-pasos.md) · [Código y licencia Apache-2.0](LICENSE)
 
-![Estado](https://img.shields.io/badge/estado-alpha_en_desarrollo-a78bfa)
-![Licencia](https://img.shields.io/badge/código-Apache_2.0-75e4c2)
-![Windows](https://img.shields.io/badge/Windows-preview-4da8da)
-![Linux](https://img.shields.io/badge/Linux-pruebas_CI-f0c674)
-![Android](https://img.shields.io/badge/Android-planificado-9baec4)
+## Probalo en Windows
 
-**Alpha Windows · guardado inicial configurable · APIs externas con costos propios**
+1. Descargá el ZIP de la alpha, extraé la carpeta completa y abrí **CompanionIA.exe**.
+2. Para conversar en tu PC, prepará Ollama y elegí un modelo local siguiendo la guía de primeros pasos.
+3. Abrí un chat y probá una conversación con la memoria apagada. Podés habilitar la lectura de respuestas cuando hayas preparado una voz.
 
-[⬇ Descargar alpha Windows](https://github.com/fabianfaaaal/companion-ia/releases) · [Tutorial de primeros pasos](docs/primeros-pasos.md) · [Guía del preview Windows](docs/modern-chat-preview.md) · [La experiencia](#-la-experiencia) · [Qué funciona](#-qué-funciona-hoy) · [Probar](#-manos-a-la-obra) · [Cómo trabajamos](#-construido-con-ia-y-con-criterio)
+En esta rama también podés probar un **lector local independiente**. Desde el checkout, ejecutá `powershell.exe -NoProfile -STA -File .\scripts\reader-windows.ps1`, pegá texto y elegí una voz de Windows. El lector funciona con las voces compatibles instaladas en el equipo.
 
-</div>
+## Diseño e implementación
+
+Companion integra una interfaz Qt con inferencia local mediante Ollama, dictado por pulsación y síntesis de voz. La política de privacidad controla captura, reproducción y acceso al contexto. La distribución pública, las compilaciones de prueba y las propuestas de voz tienen recorridos de validación propios.
 
 ## 💚 La experiencia
 
