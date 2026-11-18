@@ -304,7 +304,6 @@ class Window(QMainWindow):
         self.chat_splitter.setSizes([245, 995])
         self.tabs.addTab(self.chat_splitter, "Conversación")
         from companion.phone_bridge import PhoneBridge
-        from PySide6.QtWidgets import QVBoxLayout, QLineEdit
         self._phone_bridge_type = PhoneBridge
         self._phone_bridge = None
         self._phone_request = None
@@ -1646,7 +1645,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if (args.memory_self_test or args.engine_self_test or args.tools_self_test or args.providers_self_test or args.modern_chat_self_test or args.workflows_self_test or args.ollama_start_self_test) and not (args.smoke_test and args.state_dir):
         parser.error("Self-tests require --smoke-test and an explicit temporary --state-dir")
+    from PySide6.QtGui import QIcon
     app = QApplication([sys.argv[0]])
+    app.setWindowIcon(QIcon(str(Path(__file__).with_name("assets") / "companion-robot.png")))
     app.setApplicationName("CompanionIA")
     app.setOrganizationName("CompanionIA")
     if sys.platform == "win32":
